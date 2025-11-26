@@ -1,0 +1,270 @@
+---
+# ========================================
+# 通用 NFS Server 部署
+# 导出目录: /mnt/host/d/dockerstore
+# 用途: 为 GitLab, Jenkins, PostgreSQL 等提供共享存储
+# ========================================
+
+# 1. 创建 NFS Server 命名空间
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: nfs-system
+
+---
+# 2. NFS Server 使用 HostPath 挂载宿主机 D 盘
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: nfs-server
+  namespace: nfs-system # 部署在 nfs-system 命名空间
+  labels:
+    app: nfs-server
+spec:
+  replicas: 1 # 运行 1 个副本（NFS Server 不能多副本）
+  strategy:
+    type: Recreate  # 更新策略：先删除旧 Pod，再创建新 Pod
+  selector:
+    matchLabels:
+      app: nfs-server
+  template:
+    metadata:
+      labels:
+        app: nfs-server # Pod 的标签，必须与 selector 匹配  
+    spec:
+      # 使用节点选择器确保 NFS Server 在固定节点上运行
+      # nodeSelector:
+      #   kubernetes.io/hostname: your-node-name
+      containers:
+      - name: nfs-server
+        image: itsthenetwork/nfs-server-alpine:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - name: nfs
+          containerPort: 2049  # NFS 主服务端口
+          protocol: TCP
+        - name: mountd
+          containerPort: 20048 # Mount 守护进程端口
+          protocol: TCP
+        - name: rpcbind
+          containerPort: 111  # RPC 绑定端口
+          protocol: TCP
+        env:
+        - name: SHARED_DIRECTORY
+          value: "/exports" # NFS Server 会将 /exports 目录通过 NFS 协议共享出去
+        # 必须使用特权模式运行 NFS 服务
+        securityContext:
+          privileged: true # NFS 需要特权模式
+          capabilities:
+            add:
+              - SYS_ADMIN # 系统管理权限
+              - SETPCAP # 设置进程能力
+        volumeMounts:
+        - name: dockerstore
+          mountPath: /exports  # 挂载到容器的 /exports 目录
+        resources:
+          # requests - Kubernetes 调度时保证的资源
+          requests:
+            memory: "256Mi" # 最少需要 256MB 内存
+            cpu: "200m" # 最少需要 0.2 个 CPU
+          # limits - 容器能使用的最大资源
+          limits:
+            memory: "2Gi"  # 最多使用 2GB 内存
+            cpu: "1000m"  # 最多使用 1 个 CPU
+      volumes:
+       # 将宿主机的 /mnt/host/d/dockerstore 挂载到容器的 /exports
+      - name: dockerstore
+        hostPath:
+          path: /mnt/host/d/dockerstore
+          type: DirectoryOrCreate
+
+# 宿主机: /mnt/host/d/dockerstore
+#     ↓ (hostPath)
+# 容器内: /exports
+#     ↓ (NFS 协议)
+# 其他 Pod: 通过 NFS 访问
+
+---
+# 3. NFS Server Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: nfs-server
+  namespace: nfs-system
+  labels:
+    app: nfs-server
+spec:
+  type: ClusterIP # 集群内部服务
+  selector:
+    app: nfs-server
+  ports:
+  - name: nfs
+    port: 2049
+    targetPort: 2049
+    protocol: TCP
+  - name: mountd
+    port: 20048
+    targetPort: 20048
+    protocol: TCP
+  - name: rpcbind
+    port: 111
+    targetPort: 111
+    protocol: TCP
+  clusterIP: None  # Headless Service 提供稳定的 DNS  clusterIP: None 表示不分配虚拟 IP
+# 为什么用 Headless Service？
+# clusterIP: None 表示不分配虚拟 IP
+# 直接返回 Pod 的 IP 地址
+# 提供稳定的 DNS 名称  
+
+# 客户端 → Service:2049 → Pod:2049 → NFS Server 进程
+---
+# 4. 创建 StorageClass（动态 NFS 存储）
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: nfs-client
+provisioner: nfs.csi.k8s.io  # 或者使用手动模式
+parameters:
+  server: nfs-server.nfs-system.svc.cluster.local # NFS Server 的地址（使用 Service DNS 名称）
+  share: / # NFS 导出的根路径
+reclaimPolicy: Retain # PVC 删除后数据不删除
+volumeBindingMode: Immediate # 立即绑定卷
+
+---
+# ========================================
+# 以下是为各个应用创建的 PV 示例
+# ========================================
+
+# GitLab 存储 PV
+---
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: nfs-gitlab-config-pv
+# spec:
+#   capacity:
+#     storage: 5Gi
+#   accessModes:
+#     - ReadWriteMany
+#   persistentVolumeReclaimPolicy: Retain
+#   storageClassName: nfs-client
+#   nfs:
+#     server: nfs-server.nfs-system.svc.cluster.local
+#     path: /gitlab/config
+
+# ---
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: nfs-gitlab-logs-pv
+# spec:
+#   capacity:
+#     storage: 5Gi
+#   accessModes:
+#     - ReadWriteMany
+#   persistentVolumeReclaimPolicy: Retain
+#   storageClassName: nfs-client
+#   nfs:
+#     server: nfs-server.nfs-system.svc.cluster.local
+#     path: /gitlab/logs
+
+# ---
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: nfs-gitlab-data-pv
+# spec:
+#   capacity:
+#     storage: 20Gi
+#   accessModes:
+#     - ReadWriteMany
+#   persistentVolumeReclaimPolicy: Retain
+#   storageClassName: nfs-client
+#   nfs:
+#     server: nfs-server.nfs-system.svc.cluster.local
+#     path: /gitlab/data
+
+# ---
+# # Jenkins 存储 PV
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: nfs-jenkins-home-pv
+# spec:
+#   capacity:
+#     storage: 20Gi
+#   accessModes:
+#     - ReadWriteMany
+#   persistentVolumeReclaimPolicy: Retain
+#   storageClassName: nfs-client
+#   nfs:
+#     server: nfs-server.nfs-system.svc.cluster.local
+#     path: /jenkins
+
+# ---
+# # PostgreSQL 存储 PV
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: nfs-postgresql-data-pv
+# spec:
+#   capacity:
+#     storage: 10Gi
+#   accessModes:
+#     - ReadWriteOnce  # PostgreSQL 通常只需要单节点访问
+#   persistentVolumeReclaimPolicy: Retain
+#   storageClassName: nfs-client
+#   nfs:
+#     server: nfs-server.nfs-system.svc.cluster.local
+#     path: /postgresql/data
+
+# ---
+# # MySQL 存储 PV
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: nfs-mysql-data-pv
+# spec:
+#   capacity:
+#     storage: 10Gi
+#   accessModes:
+#     - ReadWriteOnce
+#   persistentVolumeReclaimPolicy: Retain
+#   storageClassName: nfs-client
+#   nfs:
+#     server: nfs-server.nfs-system.svc.cluster.local
+#     path: /mysql/data
+
+# ---
+# # Redis 存储 PV
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: nfs-redis-data-pv
+# spec:
+#   capacity:
+#     storage: 5Gi
+#   accessModes:
+#     - ReadWriteOnce
+#   persistentVolumeReclaimPolicy: Retain
+#   storageClassName: nfs-client
+#   nfs:
+#     server: nfs-server.nfs-system.svc.cluster.local
+#     path: /redis/data
+
+# ---
+# # 通用共享存储 PV（用于共享文件、配置等）
+# apiVersion: v1
+# kind: PersistentVolume
+# metadata:
+#   name: nfs-shared-storage-pv
+# spec:
+#   capacity:
+#     storage: 50Gi
+#   accessModes:
+#     - ReadWriteMany
+#   persistentVolumeReclaimPolicy: Retain
+#   storageClassName: nfs-client
+#   nfs:
+#     server: nfs-server.nfs-system.svc.cluster.local
+#     path: /shared
