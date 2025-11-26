@@ -11,12 +11,12 @@ spec:
   capacity:
     storage: 5Gi
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany # NFS 支持多节点读写
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /mnt/host/d/dockerstore/gitlab/config
-    type: DirectoryOrCreate
+  storageClassName: nfs-client
+  nfs:
+    server: nfs-server.nfs-system.svc.cluster.local # NFS Server 地址
+    path: /gitlab/config  # NFS 导出路径
 
 ---
 # 2. 创建 PersistentVolume (PV) - GitLab 日志
@@ -31,12 +31,12 @@ spec:
   capacity:
     storage: 5Gi
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /mnt/host/d/dockerstore/gitlab/logs
-    type: DirectoryOrCreate
+  storageClassName: nfs-client
+  nfs:
+    server: nfs-server.nfs-system.svc.cluster.local
+    path: /gitlab/logs
 
 ---
 # 3. 创建 PersistentVolume (PV) - GitLab 数据
@@ -51,12 +51,12 @@ spec:
   capacity:
     storage: 20Gi
   accessModes:
-    - ReadWriteOnce
+    - ReadWriteMany
   persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /mnt/host/d/dockerstore/gitlab/data
-    type: DirectoryOrCreate
+  storageClassName: nfs-client
+  nfs:
+    server: nfs-server.nfs-system.svc.cluster.local
+    path: /gitlab/data
 
 ---
 # 4. 创建 PersistentVolumeClaim (PVC) - Config
@@ -65,17 +65,20 @@ kind: PersistentVolumeClaim
 metadata:
   name: gitlab-config-pvc
   namespace: default
+  labels:
+    app: gitlab
+    component: config
 spec:
   accessModes:
-    - ReadWriteOnce
-  storageClassName: manual
+    - ReadWriteMany
+  storageClassName: nfs-client
   resources:
     requests:
       storage: 5Gi
   selector:
     matchLabels:
       app: gitlab
-      type: config
+      component: config
 
 ---
 # 5. 创建 PersistentVolumeClaim (PVC) - Logs
@@ -84,17 +87,20 @@ kind: PersistentVolumeClaim
 metadata:
   name: gitlab-logs-pvc
   namespace: default
+  labels:
+    app: gitlab
+    component: logs
 spec:
   accessModes:
-    - ReadWriteOnce
-  storageClassName: manual
+    - ReadWriteMany
+  storageClassName: nfs-client
   resources:
     requests:
       storage: 5Gi
   selector:
     matchLabels:
       app: gitlab
-      type: logs
+      component: logs
 
 ---
 # 6. 创建 PersistentVolumeClaim (PVC) - Data
@@ -103,17 +109,20 @@ kind: PersistentVolumeClaim
 metadata:
   name: gitlab-data-pvc
   namespace: default
+  labels:
+    app: gitlab
+    component: data
 spec:
   accessModes:
-    - ReadWriteOnce
-  storageClassName: manual
+    - ReadWriteMany
+  storageClassName: nfs-client
   resources:
     requests:
       storage: 20Gi
   selector:
     matchLabels:
       app: gitlab
-      type: data
+      component: data
 
 ---
 # 7. 创建 ConfigMap (GitLab 配置)
@@ -124,17 +133,21 @@ metadata:
   namespace: default
 data:
   GITLAB_OMNIBUS_CONFIG: |
+    # 设置外部 URL
     external_url 'http://gitlab.local'
 
     # 设置初始 root 密码（必须至少8个字符）
-    gitlab_rails['initial_root_password'] = ENV['GITLAB_INITIAL_ROOT_PASSWORD']
-    gitlab_rails['gitlab_email_from'] = ENV['GITLAB_ROOT_EMAIL']
+    gitlab_rails['initial_root_password'] = ENV['GITLAB_INITIAL_ROOT_PASSWORD'] || 'gitlab123456'
+    gitlab_rails['gitlab_email_from'] = ENV['GITLAB_ROOT_EMAIL'] || 'admin@gitlab.local'
     
     # 关闭不必要的服务以节省资源
     prometheus_monitoring['enable'] = false
-    alertmanager['enable'] = false
-    grafana['enable'] = false
-    gitlab_exporter['enable'] = false
+
+    # 日志配置
+    logging['svlogd_size'] = 200 * 1024 * 1024
+    logging['svlogd_num'] = 7
+    logging['logrotate_frequency'] = "daily"
+    logging['logrotate_rotate'] = 7
     
     # GitLab 配置
     gitlab_rails['time_zone'] = 'Asia/Shanghai'
@@ -143,13 +156,45 @@ data:
     
     # 性能优化
     puma['worker_processes'] = 2
+    puma['worker_timeout'] = 60
     sidekiq['max_concurrency'] = 10
     
     # 数据库连接池
     gitlab_rails['db_pool'] = 10
+    postgresql['shared_buffers'] = "256MB"
+    postgresql['max_worker_processes'] = 8
+
+    # Redis 配置
+    redis['maxmemory'] = "512MB"
     
     # Git 配置
     gitlab_rails['gitlab_shell_ssh_port'] = 2222
+
+    # Nginx 配置
+    nginx['listen_port'] = 80
+    nginx['listen_https'] = false
+    nginx['real_ip_trusted_addresses'] = ['0.0.0.0/0']
+    nginx['real_ip_header'] = 'X-Forwarded-For'
+    nginx['real_ip_recursive'] = 'on'
+    
+    # 安全和 CSRF 配置（重要：解决 422 错误）
+    gitlab_rails['allowed_hosts'] = []
+    gitlab_rails['trusted_proxies'] = ['0.0.0.0/0']
+   
+    
+    # 会话配置
+    gitlab_rails['session_expire_delay'] = 10080
+
+    # Workhorse 配置（解决反向代理问题）
+    gitlab_workhorse['listen_network'] = "tcp"
+    gitlab_workhorse['listen_addr'] = "0.0.0.0:8181"
+    
+    # PostgreSQL 配置
+    postgresql['shared_buffers'] = "256MB"
+    postgresql['max_worker_processes'] = 8
+    
+    # Redis 配置
+    redis['maxmemory'] = "512MB"
 
 ---
 # 8. 创建 Secret
@@ -158,6 +203,8 @@ kind: Secret
 metadata:
   name: gitlab-secret
   namespace: default
+  labels:
+    app: gitlab
 type: Opaque
 stringData:
   GITLAB_ROOT_PASSWORD: gitlab123456
@@ -184,58 +231,45 @@ spec:
       labels:
         app: gitlab
     spec:
-      securityContext:
-        fsGroup: 998 # 确保卷可被 GID 998 访问
-        runAsUser: 0 # 确保以 root 启动
-        runAsGroup: 0 # 确保以 root 组启动 
       hostname: gitlab
-      initContainers:
-      - name: fix-permissions
-        image: busybox
-        command: 
-        - sh
-        - -c
-        - |
-          # 递归设置所有权限为 777（仅用于测试）
-          chmod -R 777 /etc/gitlab /var/log/gitlab /var/opt/gitlab
-          echo "权限设置为 777"
-        # ---- 必须挂载卷，否则无法对宿主目录修改权限 ----
-        volumeMounts:
-        - name: gitlab-config
-          mountPath: /etc/gitlab
-        - name: gitlab-logs
-          mountPath: /var/log/gitlab
-        - name: gitlab-data
-          mountPath: /var/opt/gitlab
       containers:
       - name: gitlab
-        image: gitlab/gitlab-ce:16.11.1-ce.0
+        image: gitlab/gitlab-ce:18.6.0-ce.0
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 80
           name: http
+          protocol: TCP
         - containerPort: 443
           name: https
+          protocol: TCP
         - containerPort: 2222
           name: ssh
+          protocol: TCP
         env:
+        # 时区
+        - name: TZ
+          value: 'Asia/Shanghai'
+        # gitlab配置
         - name: GITLAB_OMNIBUS_CONFIG
           valueFrom:
             configMapKeyRef:
               name: gitlab-config
               key: GITLAB_OMNIBUS_CONFIG
         # 把 Secret 的值注入为对应的 ENV（ConfigMap 中使用的是 GITLAB_INITIAL_ROOT_PASSWORD / GITLAB_ROOT_EMAIL）
+        # 初始密码
         - name: GITLAB_INITIAL_ROOT_PASSWORD
           valueFrom:
             secretKeyRef:
               name: gitlab-secret
               key: GITLAB_ROOT_PASSWORD   # <-- Secret 中原来是 GITLAB_ROOT_PASSWORD
+        # 初始邮箱
         - name: GITLAB_ROOT_EMAIL
           valueFrom:
             secretKeyRef:
               name: gitlab-secret
               key: GITLAB_ROOT_EMAIL
-
+        # 卷挂载
         volumeMounts:
         - name: gitlab-config
           mountPath: /etc/gitlab
@@ -243,29 +277,33 @@ spec:
           mountPath: /var/log/gitlab
         - name: gitlab-data
           mountPath: /var/opt/gitlab
+        # 资源限制
         resources:
           requests:
-            memory: "4Gi"
-            cpu: "2000m"
+            memory: "2Gi"
+            cpu: "1000m"
           limits:
             memory: "8Gi"
             cpu: "4000m"
+        # 存活探针
         livenessProbe:
           httpGet:
             path: /health?target=liveness
             port: 80
-          initialDelaySeconds: 180
+          initialDelaySeconds: 300
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
+        # 就绪探针
         readinessProbe:
           httpGet:
             path: /health?target=readiness
             port: 80
-          initialDelaySeconds: 120
+          initialDelaySeconds: 200
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
+      # 卷定义（使用 NFS PVC）
       volumes:
       - name: gitlab-config
         persistentVolumeClaim:
@@ -309,7 +347,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: gitlab-service-nodeport
+  name: gitlab-nodeport
   namespace: default
   labels:
     app: gitlab

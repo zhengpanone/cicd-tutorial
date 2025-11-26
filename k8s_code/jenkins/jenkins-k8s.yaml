@@ -196,7 +196,7 @@ spec:
           mountPath: /var/log/jenkins
       containers:
       - name: jenkins
-        image: jenkins/jenkins:2.446-jdk17
+        image: jenkins/jenkins:2.538-jdk21
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 8080
