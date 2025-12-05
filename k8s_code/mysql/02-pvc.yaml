@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: mysql-pvc # PVC 名称
+  name: mysql-data-pvc # PVC 名称
   namespace: default
 spec:
   accessModes:

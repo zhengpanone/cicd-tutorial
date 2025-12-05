@@ -45,20 +45,20 @@ spec:
             cpu: "500m"
         livenessProbe:
           exec:
-            command: ["mysqladmin", "ping", "-h", "localhost"]
+            command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -u root -p\"$MYSQL_ROOT_PASSWORD\""]
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
         readinessProbe:
           exec:
-            command: ["mysqladmin", "ping", "-h", "localhost"]
+            command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -u root -p\"$MYSQL_ROOT_PASSWORD\""]
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
       volumes:
       - name: mysql-storage
         persistentVolumeClaim:
-          claimName: mysql-pvc
+          claimName: mysql-data-pvc
       - name: mysql-config
         configMap:
           name: mysql-config
