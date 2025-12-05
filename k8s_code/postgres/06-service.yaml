@@ -14,6 +14,6 @@ spec:
   ports:
     - port: 5432
       targetPort: 5432
-      nodePort: 30032 # ✅ 固定一个端口（范围 30000-32767）
+      nodePort: 30432 # ✅ 固定一个端口（范围 30000-32767）
       protocol: TCP
       name: postgres

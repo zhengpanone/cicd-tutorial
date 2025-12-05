@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: postgres-pv
+  name: postgres-data-pv
   labels:
     app: postgres
 spec:
@@ -13,5 +13,5 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/postgres/data
+    path: /opt/dockerstore/postgres/data
     type: DirectoryOrCreate
