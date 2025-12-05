@@ -15,7 +15,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/consul/data
+    path: /opt/dockerstore/consul/data
     type: DirectoryOrCreate
 
 ---
@@ -122,22 +122,22 @@ spec:
   ports:
   - port: 8300
     targetPort: 8300
-    nodePort: 30000  # 改为 30000-32767 范围内
+    nodePort: 30300  # 改为 30000-32767 范围内
     name: server
   - port: 8301
     targetPort: 8301
-    nodePort: 30001  # 改为 30000-32767 范围内
+    nodePort: 30301  # 改为 30000-32767 范围内
     name: serf-lan
   - port: 8302
     targetPort: 8302
-    nodePort: 30002  # 改为 30000-32767 范围内
+    nodePort: 30302  # 改为 30000-32767 范围内
     name: serf-wan
   - port: 8500
     targetPort: 8500
-    nodePort: 30003  # 改为 30000-32767 范围内
+    nodePort: 30500  # 改为 30000-32767 范围内
     name: http
   - port: 8600
     targetPort: 8600
-    nodePort: 30004  # 改为 30000-32767 范围内
+    nodePort: 30600  # 改为 30000-32767 范围内
     name: dns
     protocol: UDP
