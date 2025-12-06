@@ -116,7 +116,7 @@ spec:
       type: data
 
 ---
-# 7. 创建 ConfigMap (Jenkins 配置)
+# 7. 创建 ConfigMap - Jenkins 配置
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -127,7 +127,7 @@ data:
     --httpPort=8080
     --webroot=/var/cache/jenkins/war
     --prefix=/jenkins
-    
+
   JENKINS_JAVA_OPTS: |
     -Djava.awt.headless=true
     -Djenkins.install.runSetupWizard=false
@@ -139,7 +139,28 @@ data:
     -Duser.timezone=Asia/Shanghai
 
 ---
-# 8. 创建 Secret
+# 8. 创建 ConfigMap - 初始化 Groovy 脚本
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-init-config
+  namespace: default
+data:
+  01-create-admin.groovy: |
+    import jenkins.model.*
+    import hudson.security.*
+
+    def instance = Jenkins.getInstance()
+    def hudsonRealm = new HudsonPrivateSecurityRealm(false)
+    hudsonRealm.createAccount("admin", "jenkins123456")
+    instance.setSecurityRealm(hudsonRealm)
+
+    def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+    instance.setAuthorizationStrategy(strategy)
+    instance.save()
+
+---
+# 9. 创建 Secret - 管理员账号
 apiVersion: v1
 kind: Secret
 metadata:
@@ -151,7 +172,7 @@ stringData:
   JENKINS_ADMIN_PASSWORD: jenkins123456
 
 ---
-# 9. 创建 Deployment
+# 10. 创建 Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -196,21 +217,13 @@ spec:
             configMapKeyRef:
               name: jenkins-config
               key: JENKINS_JAVA_OPTS
-        - name: JENKINS_ADMIN_USER
-          valueFrom:
-            secretKeyRef:
-              name: jenkins-secret
-              key: JENKINS_ADMIN_USER
-        - name: JENKINS_ADMIN_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: jenkins-secret
-              key: JENKINS_ADMIN_PASSWORD
         volumeMounts:
         - name: jenkins-data
           mountPath: /var/jenkins_home
         - name: jenkins-logs
           mountPath: /var/log/jenkins
+        - name: jenkins-init
+          mountPath: /var/jenkins_home/init.groovy.d
         resources:
           requests:
             memory: "2Gi"
@@ -241,6 +254,9 @@ spec:
       - name: jenkins-logs
         persistentVolumeClaim:
           claimName: jenkins-logs-pvc
+      - name: jenkins-init
+        configMap:
+          name: jenkins-init-config
 
 ---
 # 11. 创建 Service (NodePort - 外部访问)
