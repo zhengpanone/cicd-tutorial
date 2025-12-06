@@ -1,0 +1,142 @@
+---
+# 1. 创建 PersistentVolume (PV)
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: minio-data-pv
+  labels:
+    app: minio
+    type: data
+spec:
+  capacity:
+    storage: 10Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /opt/dockerstore/minio/data
+    type: DirectoryOrCreate
+
+---
+# 2. 创建 PersistentVolumeClaim (PVC)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 10Gi
+  selector:
+    matchLabels:
+      app: minio
+      type: data
+
+--- 
+# 3. 创建 Secret
+apiVersion: v1
+kind: Secret
+metadata:
+  name: minio-secret
+  labels:
+    app: minio
+type: Opaque
+data:
+  # echo -n "minioadmin" | base64
+  MINIO_ROOT_USER: bWluaW9hZG1pbg==       # minioadmin
+  MINIO_ROOT_PASSWORD: bWluaW9hZG1pbg==   # minioadmin
+
+---
+# 4. 创建 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  labels:
+    app: minio
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: minio
+  template:
+    metadata:
+      labels:
+        app: minio
+    spec:
+      containers:
+        - name: minio
+          image: minio/minio:RELEASE.2025-09-07T16-13-09Z
+          args:
+            - server
+            - /data
+            - --console-address
+            - ":9001"
+          ports:
+            - containerPort: 9000
+              name: api
+            - containerPort: 9001
+              name: console
+          env:
+            - name: MINIO_ROOT_USER
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: MINIO_ROOT_USER
+            - name: MINIO_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: minio-secret
+                  key: MINIO_ROOT_PASSWORD
+          volumeMounts:
+            - name: minio-storage
+              mountPath: /data
+          livenessProbe:
+            httpGet:
+              path: /minio/health/live
+              port: 9000
+            initialDelaySeconds: 30
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /minio/health/ready
+              port: 9000
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
+        - name: minio-storage
+          persistentVolumeClaim:
+            claimName: minio-data-pvc
+
+---
+# 5. 创建 Service (NodePort - 外部访问)
+
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio-service-nodeport
+spec:
+  selector:
+    app: minio
+  type: NodePort
+  ports:
+    - protocol: TCP
+      port: 9000
+      targetPort: 9000
+      nodePort: 30001
+      name: api
+    - protocol: TCP
+      port: 9001
+      targetPort: 9001
+      nodePort: 30002 # 30000-32767
+      name: console
