@@ -35,3 +35,12 @@
 ```bash
 
 ```
+
+# 删除资源
+
+```bash
+microk8s kubectl delete pods -l app=rabbitmq
+microk8s kubectl delete pod -l app=rabbitmq --force --grace-period=0
+microk8s kubectl delete statefulset rabbitmq
+```
+
