@@ -14,7 +14,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/mongodb/data
+    path: /opt/dockerstore/mongodb/data
     type: DirectoryOrCreate
 
 ---
