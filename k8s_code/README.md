@@ -42,5 +42,8 @@
 microk8s kubectl delete pods -l app=rabbitmq
 microk8s kubectl delete pod -l app=rabbitmq --force --grace-period=0
 microk8s kubectl delete statefulset rabbitmq
+microk8s kubectl delete pvc -l app=elasticsearch
+microk8s kubectl delete statefulset elasticsearch
+kubectl delete job es-init-permissions
 ```
 

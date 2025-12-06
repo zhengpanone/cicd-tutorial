@@ -1,68 +1,5 @@
 ---
-# 1. 创建 PersistentVolume (PV) - Node 1 数据
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: es-data-pv-1
-  labels:
-    app: elasticsearch
-    type: data
-    node: "1"
-spec:
-  capacity:
-    storage: 30Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /mnt/host/d/dockerstore/elasticsearch/data-1
-    type: DirectoryOrCreate
-
----
-# 2. 创建 PersistentVolume (PV) - Node 2 数据
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: es-data-pv-2
-  labels:
-    app: elasticsearch
-    type: data
-    node: "2"
-spec:
-  capacity:
-    storage: 30Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /mnt/host/d/dockerstore/elasticsearch/data-2
-    type: DirectoryOrCreate
-
----
-# 3. 创建 PersistentVolume (PV) - Node 3 数据
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: es-data-pv-3
-  labels:
-    app: elasticsearch
-    type: data
-    node: "3"
-spec:
-  capacity:
-    storage: 30Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /mnt/host/d/dockerstore/elasticsearch/data-3
-    type: DirectoryOrCreate
-
----
-# 4. 创建 PersistentVolume (PV) - 日志存储
+# 1. 创建 PersistentVolume (PV) - 日志存储
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -78,11 +15,11 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/elasticsearch/logs
+    path: /opt/dockerstore/elasticsearch/logs
     type: DirectoryOrCreate
 
 ---
-# 5. 创建 ConfigMap (Elasticsearch 配置)
+# 2. 创建 ConfigMap (Elasticsearch 配置)
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -90,66 +27,45 @@ metadata:
   namespace: default
 data:
   elasticsearch.yml: |
-    # 集群配置
     cluster.name: es-cluster
     network.host: 0.0.0.0
-    
-    # 发现配置
+
     discovery.seed_hosts:
-      - elasticsearch-0.elasticsearch-headless
-      - elasticsearch-1.elasticsearch-headless
-      - elasticsearch-2.elasticsearch-headless
+      - elasticsearch-0.elasticsearch-headless.default.svc.cluster.local
+      - elasticsearch-1.elasticsearch-headless.default.svc.cluster.local
+      - elasticsearch-2.elasticsearch-headless.default.svc.cluster.local
     cluster.initial_master_nodes:
       - elasticsearch-0
       - elasticsearch-1
       - elasticsearch-2
-    
-    # 节点配置
-    node.master: true
-    node.data: true
-    node.ingest: true
-    
-    # 路径配置
+
+    node.roles: [ master, data, ingest ]
+
     path.data: /usr/share/elasticsearch/data
     path.logs: /usr/share/elasticsearch/logs
-    
-    # 内存配置
+
     bootstrap.memory_lock: false
-    
-    # 网络配置
     http.port: 9200
     transport.port: 9300
-    
-    # 安全配置 (开发环境)
+
     xpack.security.enabled: false
     xpack.security.transport.ssl.enabled: false
     xpack.security.http.ssl.enabled: false
-    
-    # 监控配置
+
     xpack.monitoring.collection.enabled: true
-    
-    # 跨域配置
+
     http.cors.enabled: true
     http.cors.allow-origin: "*"
     http.cors.allow-headers: "X-Requested-With,Content-Type,Content-Length,Authorization"
-  
+
   jvm.options: |
-    ## JVM 配置
-    
-    # Xms 和 Xmx 设置为相同值
     -Xms1g
     -Xmx1g
-    
-    # GC 配置
     -XX:+UseG1GC
     -XX:G1ReservePercent=25
     -XX:InitiatingHeapOccupancyPercent=30
-    
-    # DNS 缓存配置
     -Des.networkaddress.cache.ttl=60
     -Des.networkaddress.cache.negative.ttl=10
-    
-    # 性能优化
     -XX:+AlwaysPreTouch
     -Xss1m
     -Djava.awt.headless=true
@@ -161,12 +77,10 @@ data:
     -Dio.netty.recycler.maxCapacityPerThread=0
     -Dlog4j.shutdownHookEnabled=false
     -Dlog4j2.disable.jmx=true
-    
-    # GC 日志
     -Xlog:gc*,gc+age=trace,safepoint:file=/usr/share/elasticsearch/logs/gc.log:utctime,pid,tags:filecount=32,filesize=64m
 
 ---
-# 6. 创建 Job - 初始化目录权限
+# 3. 创建 Job - 初始化目录权限
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -182,38 +96,29 @@ spec:
         command: ['sh', '-c']
         args:
           - |
-            echo "开始初始化 Elasticsearch 数据目录..."
-            
-            # 为每个节点创建目录
-            for i in 1 2 3; do
-              mkdir -p /data/data-$i
-              mkdir -p /data/data-$i/nodes
-              chmod -R 777 /data/data-$i
-              echo "✓ 节点 $i 数据目录初始化完成"
-            done
-            
-            # 创建日志目录
-            mkdir -p /logs
-            chmod -R 777 /logs
-            echo "✓ 日志目录初始化完成"
-            
-            echo "所有目录初始化完成"
+            echo "初始化 Elasticsearch 数据目录..."
+            mkdir -p /usr/share/elasticsearch/data
+            mkdir -p /usr/share/elasticsearch/logs
+            chown -R 1000:1000 /usr/share/elasticsearch
+            chmod -R 755 /usr/share/elasticsearch
+            echo "完成"
         volumeMounts:
         - name: data
-          mountPath: /data
+          mountPath: /usr/share/elasticsearch/data
         - name: logs
-          mountPath: /logs
+          mountPath: /usr/share/elasticsearch/logs
       volumes:
       - name: data
         hostPath:
-          path: /mnt/host/d/dockerstore/elasticsearch
+          path: /opt/dockerstore/elasticsearch/data
           type: DirectoryOrCreate
       - name: logs
-        persistentVolumeClaim:
-          claimName: es-logs-pvc
+        hostPath:
+          path: /opt/dockerstore/elasticsearch/logs
+          type: DirectoryOrCreate
 
 ---
-# 7. 创建 PersistentVolumeClaim (PVC) - Logs
+# 4. 创建 PersistentVolumeClaim (PVC) - Logs
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -232,7 +137,7 @@ spec:
       type: logs
 
 ---
-# 8. 创建 Headless Service (用于集群发现)
+# 5. 创建 Headless Service (用于集群发现)
 apiVersion: v1
 kind: Service
 metadata:
@@ -241,7 +146,8 @@ metadata:
   labels:
     app: elasticsearch
 spec:
-  clusterIP: None  # Headless Service
+  clusterIP: None
+  publishNotReadyAddresses: true
   selector:
     app: elasticsearch
   ports:
@@ -250,7 +156,7 @@ spec:
     protocol: TCP
 
 ---
-# 9. 创建 StatefulSet
+# 6. 创建 StatefulSet
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -270,37 +176,28 @@ spec:
         app: elasticsearch
     spec:
       initContainers:
-      # 设置系统参数
       - name: sysctl
         image: busybox:1.36
-        command:
-        - sh
-        - -c
-        - |
-          sysctl -w vm.max_map_count=262144
-          ulimit -n 65536
+        command: ['sh', '-c', 'sysctl -w vm.max_map_count=262144']
         securityContext:
           privileged: true
-      
-      # 修复权限
       - name: fix-permissions
         image: busybox:1.36
-        command: ['sh', '-c', 'chown -R 1000:1000 /usr/share/elasticsearch/data']
+        command: ['sh', '-c', 'chown -R 1000:1000 /usr/share/elasticsearch && chmod -R 755 /usr/share/elasticsearch']
+        securityContext:
+          runAsUser: 0
         volumeMounts:
         - name: data
           mountPath: /usr/share/elasticsearch/data
-      
       containers:
       - name: elasticsearch
-        image: elasticsearch:8.11.0
+        image: elasticsearch:8.19.8
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 9200
           name: http
-          protocol: TCP
         - containerPort: 9300
           name: transport
-          protocol: TCP
         env:
         - name: node.name
           valueFrom:
@@ -309,7 +206,7 @@ spec:
         - name: ES_JAVA_OPTS
           value: "-Xms1g -Xmx1g"
         - name: ELASTIC_PASSWORD
-          value: "elastic123"  # 生产环境请使用 Secret
+          value: "elastic123"
         volumeMounts:
         - name: data
           mountPath: /usr/share/elasticsearch/data
@@ -330,7 +227,7 @@ spec:
             cpu: "2000m"
         livenessProbe:
           httpGet:
-            path: /_cluster/health
+            path: /_cluster/health?local=true
             port: 9200
           initialDelaySeconds: 90
           periodSeconds: 30
@@ -366,7 +263,7 @@ spec:
           type: data
 
 ---
-# 10. 创建 Service (ClusterIP - 集群内访问)
+# 7. 创建 ClusterIP Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -389,7 +286,7 @@ spec:
     name: transport
 
 ---
-# 11. 创建 Service (NodePort - 外部访问)
+# 8. 创建 NodePort Service
 apiVersion: v1
 kind: Service
 metadata:
@@ -409,7 +306,7 @@ spec:
     name: http
 
 ---
-# 12. 创建 Ingress (可选 - 用于域名访问)
+# 9. 创建 Ingress (可选)
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
@@ -423,7 +320,7 @@ metadata:
 spec:
   ingressClassName: nginx
   rules:
-  - host: es.example.com  # 修改为你的域名
+  - host: es.example.com
     http:
       paths:
       - path: /
