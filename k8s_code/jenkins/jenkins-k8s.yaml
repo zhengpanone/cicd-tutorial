@@ -15,7 +15,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/jenkins/config
+    path: /opt/dockerstore/jenkins/config
     type: DirectoryOrCreate
 
 ---
@@ -35,7 +35,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/jenkins/logs
+    path: /opt/dockerstore/jenkins/logs
     type: DirectoryOrCreate
 
 ---
@@ -55,7 +55,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/jenkins/data
+    path: /opt/dockerstore/jenkins/data
     type: DirectoryOrCreate
 
 ---
@@ -176,24 +176,6 @@ spec:
         runAsUser: 0
         runAsGroup: 0
       hostname: jenkins
-      initContainers:
-      - name: fix-permissions
-        image: busybox
-        command: 
-        - sh
-        - -c
-        - |
-          echo "设置 Jenkins 目录权限..."
-          chown -R 1000:1000 /var/jenkins_home
-          chmod -R 755 /var/jenkins_home
-          chown -R 1000:1000 /var/log/jenkins
-          chmod -R 755 /var/log/jenkins
-          echo "权限设置完成"
-        volumeMounts:
-        - name: jenkins-data
-          mountPath: /var/jenkins_home
-        - name: jenkins-logs
-          mountPath: /var/log/jenkins
       containers:
       - name: jenkins
         image: jenkins/jenkins:2.538-jdk21
@@ -259,29 +241,6 @@ spec:
       - name: jenkins-logs
         persistentVolumeClaim:
           claimName: jenkins-logs-pvc
-
----
-# 10. 创建 Service (ClusterIP - 集群内访问)
-apiVersion: v1
-kind: Service
-metadata:
-  name: jenkins-service
-  namespace: default
-  labels:
-    app: jenkins
-spec:
-  selector:
-    app: jenkins
-  type: ClusterIP
-  ports:
-  - port: 8080
-    targetPort: 8080
-    protocol: TCP
-    name: http
-  - port: 50000
-    targetPort: 50000
-    protocol: TCP
-    name: jnlp
 
 ---
 # 11. 创建 Service (NodePort - 外部访问)
