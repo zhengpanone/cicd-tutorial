@@ -15,7 +15,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/nginx/html
+    path: /opt/dockerstore/nginx/html
     type: DirectoryOrCreate
 
 ---
@@ -35,7 +35,27 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/nginx/logs
+    path: /opt/dockerstore/nginx/logs
+    type: DirectoryOrCreate
+---
+# 3. 创建 PersistentVolume (PV) - 存储配置文件
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: nginx-conf-pv
+  labels:
+    app: nginx
+    type: conf
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    # 宿主机存放配置文件的目录 (确保此目录已执行过"第一步"的拷贝操作)
+    path: /opt/dockerstore/nginx/conf.d
     type: DirectoryOrCreate
 
 ---
@@ -75,305 +95,321 @@ spec:
     matchLabels:
       app: nginx
       type: logs
-
 ---
-# 5. 创建 ConfigMap (Nginx 配置)
 apiVersion: v1
-kind: ConfigMap
+kind: PersistentVolumeClaim
 metadata:
-  name: nginx-config
-  namespace: default
-data:
-  nginx.conf: |
-    user nginx;
-    worker_processes auto;
-    error_log /var/log/nginx/error.log warn;
-    pid /var/run/nginx.pid;
-    
-    events {
-        worker_connections 1024;
-        use epoll;
-    }
-    
-    http {
-        include /etc/nginx/mime.types;
-        default_type application/octet-stream;
-        
-        log_format main '$remote_addr - $remote_user [$time_local] "$request" '
-                        '$status $body_bytes_sent "$http_referer" '
-                        '"$http_user_agent" "$http_x_forwarded_for"';
-        
-        access_log /var/log/nginx/access.log main;
-        
-        sendfile on;
-        tcp_nopush on;
-        tcp_nodelay on;
-        keepalive_timeout 65;
-        types_hash_max_size 2048;
-        client_max_body_size 20M;
-        
-        # Gzip 压缩
-        gzip on;
-        gzip_vary on;
-        gzip_proxied any;
-        gzip_comp_level 6;
-        gzip_types text/plain text/css text/xml text/javascript 
-                   application/json application/javascript application/xml+rss 
-                   application/rss+xml font/truetype font/opentype 
-                   application/vnd.ms-fontobject image/svg+xml;
-        
-        # 包含虚拟主机配置
-        include /etc/nginx/conf.d/*.conf;
-    }
-  
-  default.conf: |
-    server {
-        listen 80;
-        server_name _;
-        
-        root /usr/share/nginx/html;
-        index index.html index.htm;
-        
-        # 访问日志
-        access_log /var/log/nginx/access.log main;
-        error_log /var/log/nginx/error.log warn;
-        
-        # 主页
-        location / {
-            try_files $uri $uri/ /index.html;
-        }
-        
-        # 健康检查端点
-        location /health {
-            access_log off;
-            return 200 "healthy\n";
-            add_header Content-Type text/plain;
-        }
-        
-        # 状态页面
-        location /nginx_status {
-            stub_status on;
-            access_log off;
-            allow 127.0.0.1;
-            allow 10.0.0.0/8;
-            deny all;
-        }
-        
-        # 静态资源缓存
-        location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
-            expires 30d;
-            add_header Cache-Control "public, immutable";
-        }
-        
-        # 安全头
-        add_header X-Frame-Options "SAMEORIGIN" always;
-        add_header X-Content-Type-Options "nosniff" always;
-        add_header X-XSS-Protection "1; mode=block" always;
-        
-        # 禁止访问隐藏文件
-        location ~ /\. {
-            deny all;
-            access_log off;
-            log_not_found off;
-        }
-    }
-  
----
-# 6. 创建 Job - 初始化 HTML 文件
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: nginx-init-html
+  name: nginx-conf-pvc
   namespace: default
 spec:
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-      - name: init
-        image: busybox:1.36
-        command: ['sh', '-c']
-        args:
-          - |
-            echo "开始初始化 HTML 文件..."
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      app: nginx
+      type: conf
+---
+# 5. 创建 ConfigMap (Nginx 配置)
+# apiVersion: v1
+# kind: ConfigMap
+# metadata:
+#   name: nginx-config
+#   namespace: default
+# data:
+#   nginx.conf: |
+#     user nginx;
+#     worker_processes auto;
+#     error_log /var/log/nginx/error.log warn;
+#     pid /var/run/nginx.pid;
+    
+#     events {
+#         worker_connections 1024;
+#         use epoll;
+#     }
+    
+#     http {
+#         include /etc/nginx/mime.types;
+#         default_type application/octet-stream;
+        
+#         log_format main '$remote_addr - $remote_user [$time_local] "$request" '
+#                         '$status $body_bytes_sent "$http_referer" '
+#                         '"$http_user_agent" "$http_x_forwarded_for"';
+        
+#         access_log /var/log/nginx/access.log main;
+        
+#         sendfile on;
+#         tcp_nopush on;
+#         tcp_nodelay on;
+#         keepalive_timeout 65;
+#         types_hash_max_size 2048;
+#         client_max_body_size 20M;
+        
+#         # Gzip 压缩
+#         gzip on;
+#         gzip_vary on;
+#         gzip_proxied any;
+#         gzip_comp_level 6;
+#         gzip_types text/plain text/css text/xml text/javascript 
+#                    application/json application/javascript application/xml+rss 
+#                    application/rss+xml font/truetype font/opentype 
+#                    application/vnd.ms-fontobject image/svg+xml;
+        
+#         # 包含虚拟主机配置
+#         include /etc/nginx/conf.d/*.conf;
+#     }
+  
+#   default.conf: |
+#     server {
+#         listen 80;
+#         server_name _;
+        
+#         root /usr/share/nginx/html;
+#         index index.html index.htm;
+        
+#         # 访问日志
+#         access_log /var/log/nginx/access.log main;
+#         error_log /var/log/nginx/error.log warn;
+        
+#         # 主页
+#         location / {
+#             try_files $uri $uri/ /index.html;
+#         }
+        
+#         # 健康检查端点
+#         location /health {
+#             access_log off;
+#             return 200 "healthy\n";
+#             add_header Content-Type text/plain;
+#         }
+        
+#         # 状态页面
+#         location /nginx_status {
+#             stub_status on;
+#             access_log off;
+#             allow 127.0.0.1;
+#             allow 10.0.0.0/8;
+#             deny all;
+#         }
+        
+#         # 静态资源缓存
+#         location ~* \.(jpg|jpeg|png|gif|ico|css|js|svg|woff|woff2|ttf|eot)$ {
+#             expires 30d;
+#             add_header Cache-Control "public, immutable";
+#         }
+        
+#         # 安全头
+#         add_header X-Frame-Options "SAMEORIGIN" always;
+#         add_header X-Content-Type-Options "nosniff" always;
+#         add_header X-XSS-Protection "1; mode=block" always;
+        
+#         # 禁止访问隐藏文件
+#         location ~ /\. {
+#             deny all;
+#             access_log off;
+#             log_not_found off;
+#         }
+#     }
+  
+# ---
+# # 6. 创建 Job - 初始化 HTML 文件
+# apiVersion: batch/v1
+# kind: Job
+# metadata:
+#   name: nginx-init-html
+#   namespace: default
+# spec:
+#   template:
+#     spec:
+#       restartPolicy: OnFailure
+#       containers:
+#       - name: init
+#         image: busybox:1.36
+#         command: ['sh', '-c']
+#         args:
+#           - |
+#             echo "开始初始化 HTML 文件..."
             
-            if [ ! -f /html/index.html ]; then
-              cat > /html/index.html << 'EOF'
-            <!DOCTYPE html>
-            <html lang="zh-CN">
-            <head>
-                <meta charset="UTF-8">
-                <meta name="viewport" content="width=device-width, initial-scale=1.0">
-                <title>Nginx on Kubernetes</title>
-                <style>
-                    * { margin: 0; padding: 0; box-sizing: border-box; }
-                    body {
-                        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        min-height: 100vh;
-                        display: flex;
-                        align-items: center;
-                        justify-content: center;
-                        padding: 20px;
-                    }
-                    .container {
-                        background: white;
-                        border-radius: 20px;
-                        padding: 60px 40px;
-                        box-shadow: 0 20px 60px rgba(0,0,0,0.3);
-                        text-align: center;
-                        max-width: 600px;
-                        width: 100%;
-                        animation: fadeIn 0.5s ease-in;
-                    }
-                    @keyframes fadeIn {
-                        from { opacity: 0; transform: translateY(20px); }
-                        to { opacity: 1; transform: translateY(0); }
-                    }
-                    h1 {
-                        color: #333;
-                        font-size: 2.5em;
-                        margin-bottom: 20px;
-                    }
-                    .logo {
-                        font-size: 80px;
-                        margin-bottom: 20px;
-                        animation: bounce 2s infinite;
-                    }
-                    @keyframes bounce {
-                        0%, 100% { transform: translateY(0); }
-                        50% { transform: translateY(-10px); }
-                    }
-                    p {
-                        color: #666;
-                        font-size: 1.2em;
-                        line-height: 1.6;
-                        margin-bottom: 30px;
-                    }
-                    .info {
-                        background: #f8f9fa;
-                        border-radius: 10px;
-                        padding: 20px;
-                        margin-top: 30px;
-                    }
-                    .info-item {
-                        display: flex;
-                        justify-content: space-between;
-                        padding: 10px 0;
-                        border-bottom: 1px solid #e0e0e0;
-                    }
-                    .info-item:last-child { border-bottom: none; }
-                    .label {
-                        font-weight: 600;
-                        color: #555;
-                    }
-                    .value {
-                        color: #667eea;
-                        font-family: monospace;
-                    }
-                    .btn {
-                        display: inline-block;
-                        padding: 12px 30px;
-                        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                        color: white;
-                        text-decoration: none;
-                        border-radius: 25px;
-                        margin: 10px;
-                        transition: all 0.3s;
-                        border: none;
-                        cursor: pointer;
-                        font-size: 16px;
-                    }
-                    .btn:hover {
-                        transform: translateY(-2px);
-                        box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
-                    }
-                    .status {
-                        display: inline-block;
-                        width: 10px;
-                        height: 10px;
-                        background: #4caf50;
-                        border-radius: 50%;
-                        margin-right: 5px;
-                        animation: pulse 2s infinite;
-                    }
-                    @keyframes pulse {
-                        0%, 100% { opacity: 1; }
-                        50% { opacity: 0.5; }
-                    }
-                </style>
-            </head>
-            <body>
-                <div class="container">
-                    <div class="logo">🚀</div>
-                    <h1>Nginx on Kubernetes</h1>
-                    <p>您的 Nginx 服务器已在 Kubernetes 集群中成功运行！</p>
-                    <p>数据持久化存储在 PV/PVC 中</p>
+#             if [ ! -f /html/index.html ]; then
+#               cat > /html/index.html << 'EOF'
+#             <!DOCTYPE html>
+#             <html lang="zh-CN">
+#             <head>
+#                 <meta charset="UTF-8">
+#                 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+#                 <title>Nginx on Kubernetes</title>
+#                 <style>
+#                     * { margin: 0; padding: 0; box-sizing: border-box; }
+#                     body {
+#                         font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+#                         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+#                         min-height: 100vh;
+#                         display: flex;
+#                         align-items: center;
+#                         justify-content: center;
+#                         padding: 20px;
+#                     }
+#                     .container {
+#                         background: white;
+#                         border-radius: 20px;
+#                         padding: 60px 40px;
+#                         box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+#                         text-align: center;
+#                         max-width: 600px;
+#                         width: 100%;
+#                         animation: fadeIn 0.5s ease-in;
+#                     }
+#                     @keyframes fadeIn {
+#                         from { opacity: 0; transform: translateY(20px); }
+#                         to { opacity: 1; transform: translateY(0); }
+#                     }
+#                     h1 {
+#                         color: #333;
+#                         font-size: 2.5em;
+#                         margin-bottom: 20px;
+#                     }
+#                     .logo {
+#                         font-size: 80px;
+#                         margin-bottom: 20px;
+#                         animation: bounce 2s infinite;
+#                     }
+#                     @keyframes bounce {
+#                         0%, 100% { transform: translateY(0); }
+#                         50% { transform: translateY(-10px); }
+#                     }
+#                     p {
+#                         color: #666;
+#                         font-size: 1.2em;
+#                         line-height: 1.6;
+#                         margin-bottom: 30px;
+#                     }
+#                     .info {
+#                         background: #f8f9fa;
+#                         border-radius: 10px;
+#                         padding: 20px;
+#                         margin-top: 30px;
+#                     }
+#                     .info-item {
+#                         display: flex;
+#                         justify-content: space-between;
+#                         padding: 10px 0;
+#                         border-bottom: 1px solid #e0e0e0;
+#                     }
+#                     .info-item:last-child { border-bottom: none; }
+#                     .label {
+#                         font-weight: 600;
+#                         color: #555;
+#                     }
+#                     .value {
+#                         color: #667eea;
+#                         font-family: monospace;
+#                     }
+#                     .btn {
+#                         display: inline-block;
+#                         padding: 12px 30px;
+#                         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+#                         color: white;
+#                         text-decoration: none;
+#                         border-radius: 25px;
+#                         margin: 10px;
+#                         transition: all 0.3s;
+#                         border: none;
+#                         cursor: pointer;
+#                         font-size: 16px;
+#                     }
+#                     .btn:hover {
+#                         transform: translateY(-2px);
+#                         box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+#                     }
+#                     .status {
+#                         display: inline-block;
+#                         width: 10px;
+#                         height: 10px;
+#                         background: #4caf50;
+#                         border-radius: 50%;
+#                         margin-right: 5px;
+#                         animation: pulse 2s infinite;
+#                     }
+#                     @keyframes pulse {
+#                         0%, 100% { opacity: 1; }
+#                         50% { opacity: 0.5; }
+#                     }
+#                 </style>
+#             </head>
+#             <body>
+#                 <div class="container">
+#                     <div class="logo">🚀</div>
+#                     <h1>Nginx on Kubernetes</h1>
+#                     <p>您的 Nginx 服务器已在 Kubernetes 集群中成功运行！</p>
+#                     <p>数据持久化存储在 PV/PVC 中</p>
                     
-                    <div class="info">
-                        <div class="info-item">
-                            <span class="label">服务器</span>
-                            <span class="value">Nginx 1.25</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">平台</span>
-                            <span class="value">Kubernetes</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">存储</span>
-                            <span class="value">PV/PVC</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">状态</span>
-                            <span class="value"><span class="status"></span>Running</span>
-                        </div>
-                        <div class="info-item">
-                            <span class="label">时间</span>
-                            <span class="value" id="time">--:--:--</span>
-                        </div>
-                    </div>
+#                     <div class="info">
+#                         <div class="info-item">
+#                             <span class="label">服务器</span>
+#                             <span class="value">Nginx 1.25</span>
+#                         </div>
+#                         <div class="info-item">
+#                             <span class="label">平台</span>
+#                             <span class="value">Kubernetes</span>
+#                         </div>
+#                         <div class="info-item">
+#                             <span class="label">存储</span>
+#                             <span class="value">PV/PVC</span>
+#                         </div>
+#                         <div class="info-item">
+#                             <span class="label">状态</span>
+#                             <span class="value"><span class="status"></span>Running</span>
+#                         </div>
+#                         <div class="info-item">
+#                             <span class="label">时间</span>
+#                             <span class="value" id="time">--:--:--</span>
+#                         </div>
+#                     </div>
                     
-                    <div style="margin-top: 20px;">
-                        <a href="/health" class="btn">健康检查</a>
-                        <button class="btn" onclick="testAPI()">测试 API</button>
-                    </div>
-                </div>
+#                     <div style="margin-top: 20px;">
+#                         <a href="/health" class="btn">健康检查</a>
+#                         <button class="btn" onclick="testAPI()">测试 API</button>
+#                     </div>
+#                 </div>
                 
-                <script>
-                    function updateTime() {
-                        const now = new Date();
-                        document.getElementById('time').textContent = now.toLocaleTimeString('zh-CN');
-                    }
-                    setInterval(updateTime, 1000);
-                    updateTime();
+#                 <script>
+#                     function updateTime() {
+#                         const now = new Date();
+#                         document.getElementById('time').textContent = now.toLocaleTimeString('zh-CN');
+#                     }
+#                     setInterval(updateTime, 1000);
+#                     updateTime();
                     
-                    function testAPI() {
-                        fetch('/health')
-                            .then(response => response.text())
-                            .then(data => {
-                                alert('健康检查成功！\n响应: ' + data);
-                            })
-                            .catch(error => {
-                                alert('健康检查失败: ' + error);
-                            });
-                    }
-                </script>
-            </body>
-            </html>
-            EOF
-              echo "✓ HTML 文件创建完成"
-            else
-              echo "HTML 文件已存在，跳过创建"
-            fi
+#                     function testAPI() {
+#                         fetch('/health')
+#                             .then(response => response.text())
+#                             .then(data => {
+#                                 alert('健康检查成功！\n响应: ' + data);
+#                             })
+#                             .catch(error => {
+#                                 alert('健康检查失败: ' + error);
+#                             });
+#                     }
+#                 </script>
+#             </body>
+#             </html>
+#             EOF
+#               echo "✓ HTML 文件创建完成"
+#             else
+#               echo "HTML 文件已存在，跳过创建"
+#             fi
             
-            ls -lh /html/
-        volumeMounts:
-        - name: html
-          mountPath: /html
-      volumes:
-      - name: html
-        persistentVolumeClaim:
-          claimName: nginx-html-pvc
+#             ls -lh /html/
+#         volumeMounts:
+#         - name: html
+#           mountPath: /html
+#       volumes:
+#       - name: html
+#         persistentVolumeClaim:
+#           claimName: nginx-html-pvc
   
 
 ---
@@ -409,12 +445,14 @@ spec:
           name: http
           protocol: TCP
         volumeMounts:
-        - name: nginx-config
-          mountPath: /etc/nginx/nginx.conf
-          subPath: nginx.conf
-        - name: nginx-config
-          mountPath: /etc/nginx/conf.d/default.conf
-          subPath: default.conf
+        # - name: nginx-config
+        #   mountPath: /etc/nginx/nginx.conf
+        #   subPath: nginx.conf
+        # - name: nginx-config
+        #   mountPath: /etc/nginx/conf.d/default.conf
+        #   subPath: default.conf
+        - name: nginx-conf
+          mountPath: /etc/nginx/conf.d
         - name: nginx-html
           mountPath: /usr/share/nginx/html
         - name: nginx-logs
@@ -443,9 +481,12 @@ spec:
           timeoutSeconds: 2
           failureThreshold: 3
       volumes:
-      - name: nginx-config
-        configMap:
-          name: nginx-config
+      # - name: nginx-config
+      #   configMap:
+      #     name: nginx-config
+      - name: nginx-conf
+        persistentVolumeClaim:
+          claimName: nginx-conf-pvc
       - name: nginx-html
         persistentVolumeClaim:
           claimName: nginx-html-pvc
@@ -491,3 +532,22 @@ spec:
     nodePort: 30080
     protocol: TCP
     name: http
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: nginx-ingress
+spec:
+  ingressClassName: nginx
+  rules:
+  - host: nginx.local
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: nginx-service
+            port:
+              number: 80
