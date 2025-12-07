@@ -3,7 +3,7 @@
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: mongodb-pv
+  name: mongodb-data-pv
   labels:
     app: mongodb
 spec:
@@ -22,7 +22,7 @@ spec:
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: mongodb-pvc
+  name: mongodb-data-pvc
   namespace: default
 spec:
   accessModes:
@@ -83,7 +83,6 @@ type: Opaque
 stringData:
   MONGO_INITDB_ROOT_USERNAME: admin
   MONGO_INITDB_ROOT_PASSWORD: mongodb123456
-  # MONGO_INITDB_DATABASE: mydb
 
 ---
 # 5. 创建 Deployment
@@ -110,8 +109,7 @@ spec:
       - name: mongodb
         image: mongo:7.0
         imagePullPolicy: IfNotPresent
-        command:
-          - mongod
+        args:
           - --config
           - /etc/mongo/mongod.conf
         ports:
@@ -128,18 +126,14 @@ spec:
             secretKeyRef:
               name: mongodb-secret
               key: MONGO_INITDB_ROOT_PASSWORD
-        # - name: MONGO_INITDB_DATABASE
-        #   valueFrom:
-        #     secretKeyRef:
-        #       name: mongodb-secret
-        #       key: MONGO_INITDB_DATABASE
         volumeMounts:
         - name: mongodb-storage
           mountPath: /data/db
         - name: mongodb-config
-          mountPath: /etc/mongo
-        # - name: mongodb-log
-        #   mountPath: /var/log/mongodb
+          mountPath: /etc/mongo/mongod.conf
+          subPath: mongod.conf
+        - name: mongodb-log
+          mountPath: /var/log/mongodb
         resources:
           requests:
             memory: "256Mi"
@@ -148,21 +142,15 @@ spec:
             memory: "1Gi"
             cpu: "1000m"
         livenessProbe:
-          exec:
-            command:
-              - mongosh
-              - --eval
-              - "db.adminCommand('ping')"
+          tcpSocket:
+            port: 27017
           initialDelaySeconds: 30
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
         readinessProbe:
-          exec:
-            command:
-              - mongosh
-              - --eval
-              - "db.adminCommand('ping')"
+          tcpSocket:
+            port: 27017
           initialDelaySeconds: 5
           periodSeconds: 5
           timeoutSeconds: 3
@@ -170,34 +158,15 @@ spec:
       volumes:
       - name: mongodb-storage
         persistentVolumeClaim:
-          claimName: mongodb-pvc
+          claimName: mongodb-data-pvc
       - name: mongodb-config
         configMap:
           name: mongodb-config
           items:
           - key: mongod.conf
             path: mongod.conf
-      # - name: mongodb-log
-      #   emptyDir: {}
-
----
-# 6. 创建 Service (ClusterIP - 集群内访问)
-apiVersion: v1
-kind: Service
-metadata:
-  name: mongodb-service
-  namespace: default
-  labels:
-    app: mongodb
-spec:
-  selector:
-    app: mongodb
-  type: ClusterIP
-  ports:
-  - port: 27017
-    targetPort: 27017
-    protocol: TCP
-    name: mongodb
+      - name: mongodb-log
+        emptyDir: {}
 
 ---
 # 7. 创建 Service (NodePort - 外部访问)

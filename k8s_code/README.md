@@ -47,3 +47,14 @@ microk8s kubectl delete statefulset elasticsearch
 kubectl delete job es-init-permissions
 ```
 
+# 启动资源
+```bash
+kubectl rollout restart deployment/mongodb
+# 取第一个 mongodb Pod 名
+POD=$(microk8s kubectl get pod -l app=mongodb -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -it $POD -- mongosh --eval 'db.getSiblingDB('admin').getUsers()'
+kubectl exec -it $POD -- mongosh --eval 'db.getSiblingDB("admin").createUser({user:"admin", pwd:"mongodb123456", roles:[{role:"root", db:"admin"}]})'
+kubectl exec -it deployment/mongodb -- mongosh
+kubectl exec -it $POD -- mongosh \
+-u admin -p mongodb123456 --authenticationDatabase admin
+```

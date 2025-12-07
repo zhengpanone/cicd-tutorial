@@ -157,6 +157,11 @@ data:
 
     def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
     instance.setAuthorizationStrategy(strategy)
+    
+    // 设置 Jenkins URL
+    instance.setSystemMessage("Jenkins initialized via Kubernetes")
+    instance.setRootUrl("http://127.0.0.1:30090/jenkins")  // <-- 这里改成你的外部访问地址
+
     instance.save()
 
 ---
