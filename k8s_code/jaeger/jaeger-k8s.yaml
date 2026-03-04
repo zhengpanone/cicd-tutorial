@@ -15,7 +15,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/jaeger/data
+    path: /opt/dockerstore/jaeger/data
     type: DirectoryOrCreate
 
 ---
@@ -35,7 +35,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/jaeger/logs
+    path: /opt/dockerstore/jaeger/logs
     type: DirectoryOrCreate
 
 ---
@@ -474,31 +474,3 @@ spec:
     nodePort: 30411
     protocol: TCP
     name: zipkin
-
----
-# 10. 创建 Service (Headless - 用于服务发现)
-apiVersion: v1
-kind: Service
-metadata:
-  name: jaeger-agent
-  namespace: default
-  labels:
-    app: jaeger
-    component: agent
-spec:
-  clusterIP: None
-  selector:
-    app: jaeger
-  ports:
-  - port: 6831
-    targetPort: 6831
-    protocol: UDP
-    name: jaeger-compact
-  - port: 6832
-    targetPort: 6832
-    protocol: UDP
-    name: jaeger-binary
-  - port: 5778
-    targetPort: 5778
-    protocol: TCP
-    name: config-rest

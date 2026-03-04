@@ -1,0 +1,9 @@
+{
+    "maven.view": "flat",
+    "java.configuration.updateBuildConfiguration": "automatic",
+    "maven.executable.path": "/opt/development/apache-maven-3.9.11/bin/mvn",
+    "rebel.xml.generation.invariant.token": {
+        "": "PGFwcGxpY2F0aW9uIGdlbmVyYXRlZC1ieT0idnNjb2RlIj48Y2xhc3NwYXRoPjxkaXIgbmFtZT0iL2hvbWUvemhlbmdwYW4vRG9jdW1lbnRzL3dvcmtzcGFjZS9jaWNkL2s4c19jb2RlL215LXNwcmluZ2Jvb3QtYXBwL3RhcmdldC9jbGFzc2VzIj48L2Rpcj48L2NsYXNzcGF0aD48L2FwcGxpY2F0aW9uPg=="
+    },
+    "java.debug.settings.hotCodeReplace": "auto",
+}

@@ -1,0 +1,588 @@
+---
+# 1. Secret：RocketMQ 配置密码（可选）
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rocketmq-secret
+  namespace: default
+type: Opaque
+data:
+  # 如果需要为 Dashboard 设置登录密码，可以在这里配置
+  # echo -n "admin" | base64
+  DASHBOARD_USER: YWRtaW4= # admin
+  DASHBOARD_PASS: YWRtaW5AMTIzNDU2 # admin@123456
+
+---
+# 2. ConfigMap：RocketMQ Broker 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: rocketmq-broker-config
+  namespace: default
+data:
+  broker.conf: |
+    # 集群名称
+    brokerClusterName = DefaultCluster
+    brokerName = broker-a
+    brokerId = 0
+
+    # 删除文件时间点，默认凌晨4点
+    deleteWhen = 04
+    # 文件保留时间，默认48小时
+    fileReservedTime = 48
+
+    # Broker 角色
+    # - ASYNC_MASTER 异步复制Master
+    # - SYNC_MASTER 同步双写Master
+    # - SLAVE
+    brokerRole = ASYNC_MASTER
+
+    # 刷盘方式
+    # - ASYNC_FLUSH 异步刷盘
+    # - SYNC_FLUSH 同步刷盘
+    flushDiskType = ASYNC_FLUSH
+
+    # 存储路径
+    storePathRootDir = /home/rocketmq/store
+    storePathCommitLog = /home/rocketmq/store/commitlog
+    storePathConsumeQueue = /home/rocketmq/store/consumequeue
+    storePathIndex = /home/rocketmq/store/index
+
+    # 自动创建Topic和订阅组（生产环境建议关闭）
+    autoCreateTopicEnable = true
+    autoCreateSubscriptionGroup = true
+
+    # 消息大小限制
+    maxMessageSize = 4194304
+
+    # Broker 监听端口
+    listenPort = 10911
+
+    # 是否允许Broker自动创建Topic
+    autoCreateTopicEnable = true
+
+---
+# 3. ServiceAccount 和 RBAC（用于自动发现，如果需要）
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: rocketmq
+  namespace: default
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: rocketmq
+  namespace: default
+rules:
+  - apiGroups: [""]
+    resources: ["endpoints", "pods"]
+    verbs: ["get", "list", "watch"]
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: rocketmq
+  namespace: default
+subjects:
+  - kind: ServiceAccount
+    name: rocketmq
+    namespace: default
+roleRef:
+  kind: Role
+  name: rocketmq
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# 4. PersistentVolumes：NameServer
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rocketmq-nameserver-pv-0
+  labels:
+    app: rocketmq-nameserver
+    pv-index: "0"
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /opt/dockerstore/rocketmq/nameserver-0
+    type: DirectoryOrCreate
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: rocketmq-storage
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rocketmq-nameserver-pv-1
+  labels:
+    app: rocketmq-nameserver
+    pv-index: "1"
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /opt/dockerstore/rocketmq/nameserver-1
+    type: DirectoryOrCreate
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: rocketmq-storage
+
+---
+# 5. PersistentVolumes：Broker
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rocketmq-broker-pv-0
+  labels:
+    app: rocketmq-broker
+    pv-index: "0"
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /opt/dockerstore/rocketmq/broker-0
+    type: DirectoryOrCreate
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: rocketmq-storage
+
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rocketmq-broker-pv-1
+  labels:
+    app: rocketmq-broker
+    pv-index: "1"
+spec:
+  capacity:
+    storage: 50Gi
+  accessModes:
+    - ReadWriteOnce
+  hostPath:
+    path: /opt/dockerstore/rocketmq/broker-1
+    type: DirectoryOrCreate
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: rocketmq-storage
+
+---
+# 6. Headless Service：NameServer 内部通信
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-nameserver-headless
+  namespace: default
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: rocketmq-nameserver
+  ports:
+    - port: 9876
+      name: main
+
+---
+# 7. ClusterIP Service：NameServer 外部访问
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-nameserver
+  namespace: default
+spec:
+  selector:
+    app: rocketmq-nameserver
+  ports:
+    - port: 9876
+      targetPort: 9876
+      name: main
+  type: ClusterIP
+
+---
+# 8. Headless Service：Broker 内部通信
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-broker-headless
+  namespace: default
+spec:
+  clusterIP: None
+  publishNotReadyAddresses: true
+  selector:
+    app: rocketmq-broker
+  ports:
+    - port: 10909
+      name: vip
+    - port: 10911
+      name: main
+    - port: 10912
+      name: ha
+
+---
+# 9. ClusterIP Service：Broker 外部访问
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-broker
+  namespace: default
+spec:
+  selector:
+    app: rocketmq-broker
+  ports:
+    - port: 10909
+      targetPort: 10909
+      name: vip
+    - port: 10911
+      targetPort: 10911
+      name: main
+    - port: 10912
+      targetPort: 10912
+      name: ha
+  type: ClusterIP
+
+---
+# 10. NodePort Service：Broker（用于开发测试）
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-broker-nodeport
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: rocketmq-broker
+  ports:
+    - port: 10911
+      targetPort: 10911
+      nodePort: 30911
+      name: main
+
+---
+# 11. StatefulSet：NameServer（2副本）
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rocketmq-nameserver
+  namespace: default
+spec:
+  serviceName: "rocketmq-nameserver-headless"
+  replicas: 2
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: rocketmq-nameserver
+  template:
+    metadata:
+      labels:
+        app: rocketmq-nameserver
+    spec:
+      serviceAccountName: rocketmq
+      terminationGracePeriodSeconds: 30
+
+      initContainers:
+        - name: setup-permissions
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              chown -R 3000:3000 /home/rocketmq/logs
+              chmod 755 /home/rocketmq/logs
+              echo "Permissions set successfully"
+          volumeMounts:
+            - name: nameserver-storage
+              mountPath: /home/rocketmq/logs
+          securityContext:
+            runAsUser: 0
+
+      containers:
+        - name: nameserver
+          image: apache/rocketmq:4.9.4
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "mqnamesrv"]
+          ports:
+            - containerPort: 9876
+              name: main
+
+          env:
+            - name: JAVA_OPT_EXT
+              value: "-Xms512m -Xmx512m -Xmn256m"
+
+          volumeMounts:
+            - name: nameserver-storage
+              mountPath: /home/rocketmq/logs
+
+          livenessProbe:
+            tcpSocket:
+              port: 9876
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            tcpSocket:
+              port: 9876
+            initialDelaySeconds: 10
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+
+  volumeClaimTemplates:
+    - metadata:
+        name: nameserver-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: rocketmq-storage
+        resources:
+          requests:
+            storage: 5Gi
+
+---
+# 12. StatefulSet：Broker（2副本可配置主从）
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: rocketmq-broker
+  namespace: default
+spec:
+  serviceName: "rocketmq-broker-headless"
+  replicas: 2
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: rocketmq-broker
+  template:
+    metadata:
+      labels:
+        app: rocketmq-broker
+    spec:
+      serviceAccountName: rocketmq
+      terminationGracePeriodSeconds: 30
+
+      initContainers:
+        - name: setup-permissions
+          image: busybox:1.36
+          command:
+            - sh
+            - -c
+            - |
+              chown -R 3000:3000 /home/rocketmq/store /home/rocketmq/logs
+              chmod 755 /home/rocketmq/store /home/rocketmq/logs
+              echo "Permissions set successfully"
+          volumeMounts:
+            - name: broker-storage
+              mountPath: /home/rocketmq/store
+            - name: broker-logs
+              mountPath: /home/rocketmq/logs
+          securityContext:
+            runAsUser: 0
+
+      containers:
+        - name: broker
+          image: apache/rocketmq:4.9.4
+          imagePullPolicy: IfNotPresent
+          command: ["sh", "mqbroker"]
+          args:
+            - -c
+            - /etc/rocketmq/broker.conf
+            - -n
+            - rocketmq-nameserver-0.rocketmq-nameserver-headless:9876;rocketmq-nameserver-1.rocketmq-nameserver-headless:9876
+
+          ports:
+            - containerPort: 10909
+              name: vip
+            - containerPort: 10911
+              name: main
+            - containerPort: 10912
+              name: ha
+
+          env:
+            - name: NAMESRV_ADDR
+              value: "rocketmq-nameserver-0.rocketmq-nameserver-headless:9876;rocketmq-nameserver-1.rocketmq-nameserver-headless:9876"
+            - name: JAVA_OPT_EXT
+              value: "-Xms1g -Xmx1g -Xmn512m"
+
+          volumeMounts:
+            - name: broker-storage
+              mountPath: /home/rocketmq/store
+            - name: broker-logs
+              mountPath: /home/rocketmq/logs
+            - name: broker-config
+              mountPath: /etc/rocketmq
+
+          livenessProbe:
+            tcpSocket:
+              port: 10911
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            tcpSocket:
+              port: 10911
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "500m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+
+      volumes:
+        - name: broker-config
+          configMap:
+            name: rocketmq-broker-config
+
+  volumeClaimTemplates:
+    - metadata:
+        name: broker-storage
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: rocketmq-storage
+        resources:
+          requests:
+            storage: 50Gi
+    - metadata:
+        name: broker-logs
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: rocketmq-storage
+        resources:
+          requests:
+            storage: 10Gi
+
+---
+# 13. Deployment：RocketMQ Dashboard
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rocketmq-dashboard
+  namespace: default
+  labels:
+    app: rocketmq-dashboard
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: rocketmq-dashboard
+  template:
+    metadata:
+      labels:
+        app: rocketmq-dashboard
+    spec:
+      containers:
+        - name: dashboard
+          image: apacherocketmq/rocketmq-dashboard:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+
+          env:
+            - name: JAVA_OPTS
+              value: "-Xms256m -Xmx256m -Drocketmq.namesrv.addr=rocketmq-nameserver-0.rocketmq-nameserver-headless:9876;rocketmq-nameserver-1.rocketmq-nameserver-headless:9876"
+
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
+
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
+
+---
+# 14. ClusterIP Service：Dashboard
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-dashboard
+  namespace: default
+spec:
+  selector:
+    app: rocketmq-dashboard
+  ports:
+    - port: 8080
+      targetPort: 8080
+      name: http
+  type: ClusterIP
+
+---
+# 15. NodePort Service：Dashboard（用于开发测试）
+apiVersion: v1
+kind: Service
+metadata:
+  name: rocketmq-dashboard-nodeport
+  namespace: default
+spec:
+  type: NodePort
+  selector:
+    app: rocketmq-dashboard
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30880
+      name: http
+
+---
+# 16. Ingress：通过域名访问 Dashboard
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rocketmq-dashboard-ingress
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+spec:
+  ingressClassName: public # 根据你的 Ingress Controller 调整
+  rules:
+    - host: rocketmq.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rocketmq-dashboard
+                port:
+                  number: 8080

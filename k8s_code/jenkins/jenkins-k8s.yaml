@@ -157,7 +157,7 @@ data:
 
     def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
     instance.setAuthorizationStrategy(strategy)
-    
+
     // 设置 Jenkins URL
     instance.setSystemMessage("Jenkins initialized via Kubernetes")
     instance.setRootUrl("http://127.0.0.1:30090/jenkins")  // <-- 这里改成你的外部访问地址
@@ -203,65 +203,87 @@ spec:
         runAsGroup: 0
       hostname: jenkins
       containers:
-      - name: jenkins
-        image: jenkins/jenkins:2.538-jdk21
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 8080
-          name: http
-        - containerPort: 50000
-          name: jnlp
-        env:
-        - name: JENKINS_OPTS
-          valueFrom:
-            configMapKeyRef:
-              name: jenkins-config
-              key: JENKINS_OPTS
-        - name: JAVA_OPTS
-          valueFrom:
-            configMapKeyRef:
-              name: jenkins-config
-              key: JENKINS_JAVA_OPTS
-        volumeMounts:
-        - name: jenkins-data
-          mountPath: /var/jenkins_home
-        - name: jenkins-logs
-          mountPath: /var/log/jenkins
-        - name: jenkins-init
-          mountPath: /var/jenkins_home/init.groovy.d
-        resources:
-          requests:
-            memory: "2Gi"
-            cpu: "1000m"
-          limits:
-            memory: "4Gi"
-            cpu: "2000m"
-        livenessProbe:
-          httpGet:
-            path: /jenkins/login
-            port: 8080
-          initialDelaySeconds: 120
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /jenkins/login
-            port: 8080
-          initialDelaySeconds: 60
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
+        - name: jenkins
+          image: jenkins/jenkins:2.538-jdk21
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 50000
+              name: jnlp
+          env:
+            - name: JENKINS_OPTS
+              valueFrom:
+                configMapKeyRef:
+                  name: jenkins-config
+                  key: JENKINS_OPTS
+            - name: JAVA_OPTS
+              valueFrom:
+                configMapKeyRef:
+                  name: jenkins-config
+                  key: JENKINS_JAVA_OPTS
+
+            - name: DOCKER_HOST
+              value: tcp://localhost:2375
+
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+            - name: jenkins-logs
+              mountPath: /var/log/jenkins
+            - name: jenkins-init
+              mountPath: /var/jenkins_home/init.groovy.d
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /jenkins/login
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /jenkins/login
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Docker in Docker
+        - name: docker
+          image: docker:26-dind
+          securityContext:
+            privileged: true
+          command:
+            - dockerd
+            - "--host=tcp://0.0.0.0:2375"
+            - "--host=unix:///var/run/docker.sock"
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          volumeMounts:
+            - name: docker-storage
+              mountPath: /var/lib/docker
+
       volumes:
-      - name: jenkins-data
-        persistentVolumeClaim:
-          claimName: jenkins-data-pvc
-      - name: jenkins-logs
-        persistentVolumeClaim:
-          claimName: jenkins-logs-pvc
-      - name: jenkins-init
-        configMap:
-          name: jenkins-init-config
+        - name: jenkins-data
+          persistentVolumeClaim:
+            claimName: jenkins-data-pvc
+        - name: jenkins-logs
+          persistentVolumeClaim:
+            claimName: jenkins-logs-pvc
+        - name: jenkins-init
+          configMap:
+            name: jenkins-init-config
+        - name: docker-storage
+          emptyDir: {}
 
 ---
 # 11. 创建 Service (NodePort - 外部访问)
@@ -277,13 +299,13 @@ spec:
     app: jenkins
   type: NodePort
   ports:
-  - port: 8080
-    targetPort: 8080
-    nodePort: 30090
-    protocol: TCP
-    name: http
-  - port: 50000
-    targetPort: 50000
-    nodePort: 30091
-    protocol: TCP
-    name: jnlp
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30090
+      protocol: TCP
+      name: http
+    - port: 50000
+      targetPort: 50000
+      nodePort: 30091
+      protocol: TCP
+      name: jnlp
