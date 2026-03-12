@@ -50,4 +50,4 @@ spec:
               service:
                 name: my-express-app
                 port:
-                  number: 3000
+                  number: 8080
