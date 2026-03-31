@@ -42,6 +42,9 @@ kind: ConfigMap
 metadata:
   name: mongodb-config
   namespace: default
+  labels:
+    app: mongodb
+    type: config
 data:
   mongod.conf: |
     # MongoDB 配置文件
@@ -51,22 +54,22 @@ data:
       wiredTiger:
         engineConfig:
           cacheSizeGB: 0.5
-    
+
     systemLog:
       # 日志输出 
       # destination: file
       # path: /var/log/mongodb/mongod.log
       logAppend: true
       verbosity: 0
-    
+
     net:
       port: 27017
       bindIp: 0.0.0.0
       maxIncomingConnections: 100
-    
+
     security:
       authorization: enabled
-    
+
     # 性能优化
     operationProfiling:
       mode: slowOp
@@ -106,67 +109,67 @@ spec:
         app: mongodb
     spec:
       containers:
-      - name: mongodb
-        image: mongo:7.0
-        imagePullPolicy: IfNotPresent
-        args:
-          - --config
-          - /etc/mongo/mongod.conf
-        ports:
-        - containerPort: 27017
-          name: mongodb
-        env:
-        - name: MONGO_INITDB_ROOT_USERNAME
-          valueFrom:
-            secretKeyRef:
-              name: mongodb-secret
-              key: MONGO_INITDB_ROOT_USERNAME
-        - name: MONGO_INITDB_ROOT_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: mongodb-secret
-              key: MONGO_INITDB_ROOT_PASSWORD
-        volumeMounts:
-        - name: mongodb-storage
-          mountPath: /data/db
-        - name: mongodb-config
-          mountPath: /etc/mongo/mongod.conf
-          subPath: mongod.conf
-        - name: mongodb-log
-          mountPath: /var/log/mongodb
-        resources:
-          requests:
-            memory: "256Mi"
-            cpu: "250m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
-        livenessProbe:
-          tcpSocket:
-            port: 27017
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          tcpSocket:
-            port: 27017
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 3
+        - name: mongodb
+          image: mongo:7.0
+          imagePullPolicy: IfNotPresent
+          args:
+            - --config
+            - /etc/mongo/mongod.conf
+          ports:
+            - containerPort: 27017
+              name: mongodb
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: MONGO_INITDB_ROOT_USERNAME
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: MONGO_INITDB_ROOT_PASSWORD
+          volumeMounts:
+            - name: mongodb-storage
+              mountPath: /data/db
+            - name: mongodb-config
+              mountPath: /etc/mongo/mongod.conf
+              subPath: mongod.conf
+            - name: mongodb-log
+              mountPath: /var/log/mongodb
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          livenessProbe:
+            tcpSocket:
+              port: 27017
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 27017
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
       volumes:
-      - name: mongodb-storage
-        persistentVolumeClaim:
-          claimName: mongodb-data-pvc
-      - name: mongodb-config
-        configMap:
-          name: mongodb-config
-          items:
-          - key: mongod.conf
-            path: mongod.conf
-      - name: mongodb-log
-        emptyDir: {}
+        - name: mongodb-storage
+          persistentVolumeClaim:
+            claimName: mongodb-data-pvc
+        - name: mongodb-config
+          configMap:
+            name: mongodb-config
+            items:
+              - key: mongod.conf
+                path: mongod.conf
+        - name: mongodb-log
+          emptyDir: {}
 
 ---
 # 7. 创建 Service (NodePort - 外部访问)
@@ -182,8 +185,8 @@ spec:
     app: mongodb
   type: NodePort
   ports:
-  - port: 27017
-    targetPort: 27017
-    nodePort: 30017
-    protocol: TCP
-    name: mongodb
+    - port: 27017
+      targetPort: 27017
+      nodePort: 30017
+      protocol: TCP
+      name: mongodb

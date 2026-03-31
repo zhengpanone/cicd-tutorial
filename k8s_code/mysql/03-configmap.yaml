@@ -4,6 +4,9 @@ kind: ConfigMap
 metadata:
   name: mysql-config
   namespace: default
+  labels:
+    app: mysql
+    type: config
 data:
   my.cnf: |
     [mysqld]

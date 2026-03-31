@@ -42,34 +42,37 @@ kind: ConfigMap
 metadata:
   name: redis-config
   namespace: default
+  labels:
+    app: redis
+    type: config
 data:
   redis.conf: |
     # Redis 配置文件
     bind 0.0.0.0
     port 6379
-    
+
     # 持久化配置
     save 900 1
     save 300 10
     save 60 10000
-    
+
     # AOF 持久化
     appendonly yes
     appendfilename "appendonly.aof"
     appendfsync everysec
-    
+
     # 内存管理
     maxmemory 256mb
     maxmemory-policy allkeys-lru
-    
+
     # 日志
     loglevel notice
-    
+
     # 其他配置
     tcp-backlog 511
     timeout 0
     tcp-keepalive 300
-    
+
     # 禁用危险命令
     rename-command FLUSHDB ""
     rename-command FLUSHALL ""
@@ -108,68 +111,67 @@ spec:
         app: redis
     spec:
       containers:
-      - name: redis
-        image: redis:8.4.0-alpine
-        imagePullPolicy: IfNotPresent
-        command:
-          - redis-server
-          - /usr/local/etc/redis/redis.conf
-          - --requirepass
-          - $(REDIS_PASSWORD)
-        ports:
-        - containerPort: 6379
-          name: redis
-        env:
-        - name: REDIS_PASSWORD
-          valueFrom:
-            secretKeyRef:
-              name: redis-secret
-              key: REDIS_PASSWORD
-        volumeMounts:
-        - name: redis-storage
-          mountPath: /data
-        - name: redis-config
-          mountPath: /usr/local/etc/redis
-        resources:
-          requests:
-            memory: "128Mi"
-            cpu: "100m"
-          limits:
-            memory: "256Mi"
-            cpu: "200m"
-        livenessProbe:
-          exec:
-            command:
-              - redis-cli
-              - -a
-              - $(REDIS_PASSWORD)
-              - ping
-          initialDelaySeconds: 30
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-        readinessProbe:
-          exec:
-            command:
-              - redis-cli
-              - -a
-              - $(REDIS_PASSWORD)
-              - ping
-          initialDelaySeconds: 5
-          periodSeconds: 5
-          timeoutSeconds: 3
-          failureThreshold: 3
+        - name: redis
+          image: redis:8.4.0-alpine
+          imagePullPolicy: IfNotPresent
+          command:
+            - redis-server
+            - /usr/local/etc/redis/redis.conf
+            - --requirepass
+            - $(REDIS_PASSWORD)
+          ports:
+            - containerPort: 6379
+              name: redis
+          env:
+            - name: REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: redis-secret
+                  key: REDIS_PASSWORD
+          volumeMounts:
+            - name: redis-storage
+              mountPath: /data
+            - name: redis-config
+              mountPath: /usr/local/etc/redis
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "200m"
+          livenessProbe:
+            exec:
+              command:
+                - redis-cli
+                - -a
+                - $(REDIS_PASSWORD)
+                - ping
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - redis-cli
+                - -a
+                - $(REDIS_PASSWORD)
+                - ping
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            timeoutSeconds: 3
+            failureThreshold: 3
       volumes:
-      - name: redis-storage
-        persistentVolumeClaim:
-          claimName: redis-data-pvc
-      - name: redis-config
-        configMap:
-          name: redis-config
-          items:
-          - key: redis.conf
-            path: redis.conf
-
+        - name: redis-storage
+          persistentVolumeClaim:
+            claimName: redis-data-pvc
+        - name: redis-config
+          configMap:
+            name: redis-config
+            items:
+              - key: redis.conf
+                path: redis.conf
 
 ---
 # 6. 创建 Service (NodePort - 外部访问)
@@ -185,8 +187,8 @@ spec:
     app: redis
   type: NodePort
   ports:
-  - port: 6379
-    targetPort: 6379
-    nodePort: 30379
-    protocol: TCP
-    name: redis
+    - port: 6379
+      targetPort: 6379
+      nodePort: 30379
+      protocol: TCP
+      name: redis
