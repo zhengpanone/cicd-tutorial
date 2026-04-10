@@ -74,10 +74,10 @@ spec:
               value: "false"
             - name: TZ
               value: "Asia/Shanghai"
-
           volumeMounts:
             - name: milvus-data
               mountPath: /var/lib/milvus
+
           resources:
             requests:
               memory: "2Gi"
@@ -97,7 +97,6 @@ spec:
               port: 19530
             initialDelaySeconds: 60
             periodSeconds: 5
-
       volumes:
         - name: milvus-data
           persistentVolumeClaim:
