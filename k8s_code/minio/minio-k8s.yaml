@@ -36,7 +36,7 @@ spec:
       app: minio
       type: data
 
---- 
+---
 # 3. 创建 Secret
 apiVersion: v1
 kind: Secret
@@ -47,8 +47,8 @@ metadata:
 type: Opaque
 data:
   # echo -n "minioadmin" | base64
-  MINIO_ACCESS_KEY: bWluaW9hZG1pbg==       # minioadmin
-  MINIO_SECRET_KEY: bWluaW9hZG1pbg==   # minioadmin
+  MINIO_ACCESS_KEY: bWluaW9hZG1pbg== # minioadmin
+  MINIO_SECRET_KEY: bWluaW9hZG1pbg== # minioadmin
 
 ---
 # 4. 创建 Deployment
@@ -124,7 +124,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: minio-service-nodeport
+  name: minio
 spec:
   selector:
     app: minio
