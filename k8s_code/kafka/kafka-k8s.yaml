@@ -1,0 +1,191 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kafka-kraft-config
+  namespace: default
+data:
+  cluster.id: "mY7BuJZ8QdWqvK1l5LkH3w"
+  kafka.properties: |
+    node.roles=broker,controller
+    process.roles=broker,controller
+    controller.quorum.voters=0@kafka-0.kafka-headless.default.svc.cluster.local:9093,1@kafka-1.kafka-headless.default.svc.cluster.local:9093,2@kafka-2.kafka-headless.default.svc.cluster.local:9093
+    listeners=CONTROLLER://:9093,PLAINTEXT://:9092,EXTERNAL://:9094
+    # ✅ EXTERNAL 改为宿主机真实IP，外部客户端靠这个地址回连
+    advertised.listeners=PLAINTEXT://$(POD_NAME).kafka-headless.default.svc.cluster.local:9092,EXTERNAL://192.168.1.100:30094
+    listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
+    inter.broker.listener.name=PLAINTEXT
+    controller.listener.names=CONTROLLER
+    node.id=${BROKER_ID}
+    controller.id=${BROKER_ID}
+    metadata.log.dir=/var/lib/kafka/data/meta
+    metadata.log.segment.bytes=134217728
+    metadata.log.retention.bytes=10737418240
+    log.dirs=/var/lib/kafka/data/logs
+    num.partitions=3
+    default.replication.factor=3
+    min.insync.replicas=2
+    offsets.topic.replication.factor=3
+    transaction.state.log.replication.factor=3
+    transaction.state.log.min.isr=2
+    log.retention.hours=168
+    log.retention.bytes=1073741824
+    log.cleanup.policy=delete
+    auto.create.topics.enable=false
+    delete.topic.enable=true
+    compression.type=producer
+    message.max.bytes=10485760
+    replica.fetch.max.bytes=10485760
+    ssl.client.auth=none
+    sasl.enabled.mechanisms=
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-headless
+  labels:
+    app: kafka
+spec:
+  ports:
+  - port: 9092
+    name: client
+  - port: 9093
+    name: controller
+  - port: 9094
+    name: external
+  clusterIP: None
+  selector:
+    app: kafka
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-bootstrap
+  labels:
+    app: kafka
+spec:
+  ports:
+  - port: 9092
+    targetPort: 9092
+    name: client
+  selector:
+    app: kafka
+  type: ClusterIP
+---
+# ✅ 新增：对外暴露的 NodePort Service
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-external
+  labels:
+    app: kafka
+spec:
+  type: NodePort
+  ports:
+  - port: 9094
+    targetPort: 9094
+    nodePort: 30094      # 其他电脑连接这个端口
+    name: external
+  selector:
+    app: kafka
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kafka
+spec:
+  serviceName: kafka-headless
+  replicas: 3
+  podManagementPolicy: Parallel
+  selector:
+    matchLabels:
+      app: kafka
+  template:
+    metadata:
+      labels:
+        app: kafka
+    spec:
+      terminationGracePeriodSeconds: 60
+      initContainers:
+      - name: init-kafka
+        image: confluentinc/cp-kafka:7.4.0
+        command:
+        - sh
+        - -c
+        - |
+          BROKER_INDEX=${HOSTNAME##*-}
+          mkdir -p /opt/dockerstore/kafka/broker-${BROKER_INDEX}/logs
+          mkdir -p /opt/dockerstore/kafka/broker-${BROKER_INDEX}/meta
+          echo "Created dirs for broker-${BROKER_INDEX}"
+        volumeMounts:
+        - name: kafka-data
+          mountPath: /opt/dockerstore/kafka
+      containers:
+      - name: kafka
+        image: confluentinc/cp-kafka:7.4.0
+        env:
+        - name: CLUSTER_ID
+          valueFrom:
+            configMapKeyRef:
+              name: kafka-kraft-config
+              key: cluster.id
+        - name: POD_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        # ✅ 不再需要 EXTERNAL_IP，改为固定宿主机IP
+        command:
+        - sh
+        - -c
+        - |
+          BROKER_INDEX=${HOSTNAME##*-}
+          cp /etc/kafka/kraft.properties /tmp/kraft.properties
+          sed -i "s|\${BROKER_ID}|${BROKER_INDEX}|g" /tmp/kraft.properties
+          sed -i "s|/var/lib/kafka/data|/opt/dockerstore/kafka/broker-${BROKER_INDEX}|g" /tmp/kraft.properties
+          sed -i "s|\$(POD_NAME)|${HOSTNAME}|g" /tmp/kraft.properties
+
+          if [ ! -f /opt/dockerstore/kafka/broker-${BROKER_INDEX}/meta/meta.properties ]; then
+            echo "Initializing KRaft metadata for broker-${BROKER_INDEX}..."
+            kafka-storage format --ignore-formatted -t $CLUSTER_ID -c /tmp/kraft.properties
+          fi
+          exec kafka-server-start /tmp/kraft.properties
+        ports:
+        - containerPort: 9092
+          name: client
+        - containerPort: 9093
+          name: controller
+        - containerPort: 9094
+          name: external
+        volumeMounts:
+        - name: config
+          mountPath: /etc/kafka/kraft.properties
+          subPath: kraft.properties
+        - name: kafka-data
+          mountPath: /opt/dockerstore/kafka
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1000m"
+          limits:
+            memory: "4Gi"
+            cpu: "2000m"
+        readinessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 9092
+          initialDelaySeconds: 60
+          periodSeconds: 20
+      volumes:
+      - name: config
+        configMap:
+          name: kafka-kraft-config
+          items:
+          - key: kafka.properties
+            path: kraft.properties
+      - name: kafka-data
+        hostPath:
+          path: /opt/dockerstore/kafka
+          type: DirectoryOrCreate
