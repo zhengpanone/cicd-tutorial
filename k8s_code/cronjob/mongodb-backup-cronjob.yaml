@@ -1,0 +1,166 @@
+---
+# 1. 备份脚本 ConfigMap
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: mongodb-backup-script
+data:
+  backup.sh: |
+    #!/bin/sh
+    set -e
+
+    # 环境变量
+    BACKUP_DIR="/backup/$(date +%Y-%m-%d)"
+    TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+    LOG_FILE="/backup/backup_${TIMESTAMP}.log"
+    MAX_BACKUP_DAYS=7  # 保留7天备份
+
+    # 记录开始时间
+    echo "=== MongoDB 备份开始 $(date) ===" | tee -a $LOG_FILE
+
+    # 1. 查找 MongoDB Pod
+    MONGO_POD=$(kubectl get pod -l app=mongodb -o jsonpath='{.items[0].metadata.name}' 2>/dev/null || echo "")
+
+    if [ -z "$MONGO_POD" ]; then
+      echo "错误: 未找到 MongoDB Pod" | tee -a $LOG_FILE
+      exit 1
+    fi
+
+    echo "找到 MongoDB Pod: $MONGO_POD" | tee -a $LOG_FILE
+
+    # 2. 获取所有数据库列表（排除系统库）
+    DATABASES=$(kubectl exec $MONGO_POD -- mongosh --quiet --eval "
+      db.getSiblingDB('admin').adminCommand({listDatabases:1}).databases
+        .filter(db => !['admin', 'config', 'local'].includes(db.name))
+        .map(db => db.name)
+        .join(' ')
+    " 2>/dev/null)
+
+    if [ -z "$DATABASES" ]; then
+      DATABASES="admin"  # 默认备份 admin 库
+    fi
+
+    echo "将备份以下数据库: $DATABASES" | tee -a $LOG_FILE
+
+    # 3. 创建备份目录
+    mkdir -p $BACKUP_DIR
+    echo "备份目录: $BACKUP_DIR" | tee -a $LOG_FILE
+
+    # 4. 执行备份每个数据库
+    for DB in $DATABASES; do
+      echo "备份数据库: $DB ..." | tee -a $LOG_FILE
+      
+      # 使用 mongodump 备份
+      if kubectl exec $MONGO_POD -- mongodump \
+        --authenticationDatabase admin \
+        --username admin \
+        --password mongodb123456 \
+        --db $DB \
+        --gzip \
+        --archive=$BACKUP_DIR/${DB}.gz 2>>$LOG_FILE; then
+        echo "  ✓ $DB 备份成功" | tee -a $LOG_FILE
+      else
+        echo "  ✗ $DB 备份失败" | tee -a $LOG_FILE
+      fi
+    done
+
+    # 5. 创建备份清单
+    echo "创建备份清单..." | tee -a $LOG_FILE
+    cat > $BACKUP_DIR/backup.info <<EOF
+    备份时间: $(date)
+    MongoDB Pod: $MONGO_POD
+    备份的数据库: $DATABASES
+    备份大小: $(du -sh $BACKUP_DIR | cut -f1)
+    EOF
+
+    # 6. 清理旧备份（保留最近7天）
+    echo "清理7天前的旧备份..." | tee -a $LOG_FILE
+    find /backup -maxdepth 1 -type d -name "20*" -mtime +$MAX_BACKUP_DAYS -exec rm -rf {} \; 2>/dev/null || true
+    find /backup -name "*.log" -mtime +30 -delete 2>/dev/null || true
+
+    # 7. 检查备份完整性
+    echo "检查备份文件..." | tee -a $LOG_FILE
+    BACKUP_COUNT=$(find $BACKUP_DIR -name "*.gz" | wc -l)
+
+    echo "=== 备份完成 $(date) ===" | tee -a $LOG_FILE
+    echo "备份文件数: $BACKUP_COUNT" | tee -a $LOG_FILE
+    echo "总大小: $(du -sh $BACKUP_DIR | cut -f1)" | tee -a $LOG_FILE
+    echo "备份日志: $LOG_FILE" | tee -a $LOG_FILE
+
+    # 8. 发送通知（可选，需要配置webhook）
+    # curl -X POST -H "Content-Type: application/json" \
+    #   -d "{\"text\":\"MongoDB 备份完成: $BACKUP_COUNT 个数据库，大小: $(du -sh $BACKUP_DIR | cut -f1)\"}" \
+    #   https://your-webhook-url
+
+    exit 0
+---
+# 2. CronJob 主配置
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: mongodb-backup
+spec:
+  schedule: "0 2 * * *" # 每天凌晨2点（UTC时间，对应北京时间10点）
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          # 使用 kubectl 需要挂载 kubeconfig
+          serviceAccountName: default
+          containers:
+            - name: backup
+              image: bitnami/kubectl:latest
+              command: ["/bin/sh", "-c"]
+              args:
+                - |
+                  # 复制备份脚本
+                  cp /scripts/backup.sh /tmp/backup.sh
+                  chmod +x /tmp/backup.sh
+
+                  # 设置 kubeconfig（使用默认 ServiceAccount）
+                  cp /var/run/secrets/kubernetes.io/serviceaccount/token /tmp/token
+                  kubectl config set-cluster microk8s --server=https://kubernetes.default.svc
+                  kubectl config set-credentials microk8s-user --token=$(cat /tmp/token)
+                  kubectl config set-context microk8s --cluster=microk8s --user=microk8s-user
+                  kubectl config use-context microk8s
+
+                  # 执行备份
+                  /tmp/backup.sh
+
+              # 挂载宿主机目录存储备份
+              volumeMounts:
+                - name: backup-storage
+                  mountPath: /backup
+                - name: script
+                  mountPath: /scripts
+                  readOnly: true
+                - name: timezone
+                  mountPath: /etc/localtime
+                  readOnly: true
+
+              # 资源限制（重要！）
+              resources:
+                requests:
+                  memory: "256Mi"
+                  cpu: "200m"
+                limits:
+                  memory: "512Mi"
+                  cpu: "500m"
+
+          # 使用宿主机的本地时间（解决时区问题）
+          volumes:
+            - name: backup-storage
+              hostPath:
+                path: /opt/dockerstore/cronjob/mongodb-backup
+                type: DirectoryOrCreate
+            - name: script
+              configMap:
+                name: mongodb-backup-script
+            - name: timezone
+              hostPath:
+                path: /etc/localtime
+                type: File
+
+          restartPolicy: OnFailure

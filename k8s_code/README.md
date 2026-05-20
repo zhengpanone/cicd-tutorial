@@ -50,6 +50,41 @@ kubectl get secret -n kube-system microk8s-dashboard-token \
 # 3. 复制输出的Token（以eyJ开头的一长串字符串）
 ```
 
+## 获取 Token
+
+```bash
+# 1. 创建一个专门用于 Dashboard 的服务账户
+kubectl apply -f - <<EOF
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: admin-user
+  namespace: kubernetes-dashboard
+EOF
+
+# 2. 为这个账户绑定集群管理员权限（生产环境请缩小权限范围）
+kubectl apply -f - <<EOF
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: admin-user
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+- kind: ServiceAccount
+  name: admin-user
+  namespace: kubernetes-dashboard
+EOF
+
+# 3. 获取该账户的 Secret 名称
+SECRET_NAME=$(kubectl get secret -n kubernetes-dashboard | grep admin-user-token | awk '{print $1}')
+
+# 4. 解码并查看 Token
+kubectl describe secret $SECRET_NAME -n kubernetes-dashboard
+```
+
 # 连接测试
 
 ## 集群内访问
