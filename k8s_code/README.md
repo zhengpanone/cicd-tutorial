@@ -242,3 +242,54 @@ cat /etc/resolv.conf
 
 microk8s kubectl exec -it deployment/prometheus -- sh
 ```
+
+
+# K3S
+
+## 安装wsl
+
+```bash
+wsl --install -d Ubuntu-24.04
+```
+
+## 安装卸载
+```bash
+# 安装
+curl -sfL https://get.k3s.io | sh -
+# 卸载
+sudo /usr/local/bin/k3s-uninstall.sh
+```
+
+## 配置 kubectl
+
+```bash
+mkdir -p ~/.kube
+sudo cp /etc/rancher/k3s/k3s.yaml ~/.kube/config
+sudo chown $(id -u):$(id -g) ~/.kube/config
+```
+
+## 验证k3s
+
+```bash
+kubectl get nodes
+```
+
+
+修改 Docker daemon
+
+WSL2 内：
+
+sudo nano /etc/docker/daemon.json
+
+加入：
+
+{
+  "hosts": ["unix:///var/run/docker.sock", "tcp://0.0.0.0:2375"]
+}
+✔ 重启 Docker
+sudo service docker restart
+
+
+PowerShell 连接
+$env:DOCKER_HOST="tcp://localhost:2375"
+docker ps
