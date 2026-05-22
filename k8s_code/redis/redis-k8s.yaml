@@ -14,7 +14,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/redis/data
+    path: /run/desktop/mnt/host/e/dockerstore/redis/data
     type: DirectoryOrCreate
 
 ---

@@ -15,7 +15,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/nacos/data
+    path: /run/desktop/mnt/host/e/dockerstore/nacos/data
     type: DirectoryOrCreate
 
 ---
@@ -35,7 +35,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/nacos/logs
+    path: /run/desktop/mnt/host/e/dockerstore/nacos/logs
     type: DirectoryOrCreate
 
 ---
