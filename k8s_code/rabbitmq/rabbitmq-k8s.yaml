@@ -99,7 +99,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: /opt/dockerstore/rabbitmq/data-0
+    path: /run/desktop/mnt/host/e/dockerstore/rabbitmq/data-0
     type: DirectoryOrCreate
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
@@ -118,7 +118,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: /opt/dockerstore/rabbitmq/data-1
+    path: /run/desktop/mnt/host/e/dockerstore/rabbitmq/data-1
     type: DirectoryOrCreate
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
@@ -137,7 +137,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: /opt/dockerstore/rabbitmq/data-2
+    path: /run/desktop/mnt/host/e/dockerstore/rabbitmq/data-2
     type: DirectoryOrCreate
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual

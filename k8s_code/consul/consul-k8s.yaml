@@ -15,7 +15,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/consul/data
+    path: /run/desktop/mnt/host/e/dockerstore/consul/data
     type: DirectoryOrCreate
 
 ---

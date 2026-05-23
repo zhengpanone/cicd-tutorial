@@ -14,7 +14,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: /opt/dockerstore/rocketmq/broker-0/store
+    path: /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-0/store
     type: DirectoryOrCreate
   storageClassName: manual
   persistentVolumeReclaimPolicy: Retain
@@ -33,7 +33,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: /opt/dockerstore/rocketmq/broker-1/store
+    path: /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-1/store
     type: DirectoryOrCreate
   storageClassName: manual
   persistentVolumeReclaimPolicy: Retain
@@ -52,7 +52,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: /opt/dockerstore/rocketmq/nameserver-0/logs
+    path: /run/desktop/mnt/host/e/dockerstore/rocketmq/nameserver-0/logs
     type: DirectoryOrCreate
   storageClassName: manual
   persistentVolumeReclaimPolicy: Retain
@@ -71,7 +71,7 @@ spec:
   accessModes:
     - ReadWriteOnce
   hostPath:
-    path: /opt/dockerstore/rocketmq/nameserver-1/logs
+    path: /run/desktop/mnt/host/e/dockerstore/rocketmq/nameserver-1/logs
     type: DirectoryOrCreate
   storageClassName: manual
   persistentVolumeReclaimPolicy: Retain
@@ -219,7 +219,7 @@ spec:
 
 ---
 # NameServer-0（绑定 nameserver-pvc-0）
-# 宿主机路径：/opt/dockerstore/rocketmq/nameserver-0/logs → 容器 /home/rocketmq/logs
+# 宿主机路径：/run/desktop/mnt/host/e/dockerstore/rocketmq/nameserver-0/logs → 容器 /home/rocketmq/logs
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -261,7 +261,7 @@ spec:
 
 ---
 # NameServer-1（绑定 nameserver-pvc-1）
-# 宿主机路径：/opt/dockerstore/rocketmq/nameserver-1/logs → 容器 /home/rocketmq/logs
+# 宿主机路径：/run/desktop/mnt/host/e/dockerstore/rocketmq/nameserver-1/logs → 容器 /home/rocketmq/logs
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -331,8 +331,8 @@ spec:
 # ===============================
 # 6. Broker MASTER
 # 宿主机目录结构：
-#   store → /opt/dockerstore/rocketmq/broker-0/store（PVC）→ 容器 /opt/rocketmq/store
-#   logs  → /opt/dockerstore/rocketmq/broker-0/logs（hostPath）→ 容器 /home/rocketmq/logs
+#   store → /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-0/store（PVC）→ 容器 /opt/rocketmq/store
+#   logs  → /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-0/logs（hostPath）→ 容器 /home/rocketmq/logs
 # ===============================
 apiVersion: apps/v1
 kind: StatefulSet
@@ -423,8 +423,8 @@ spec:
 # ===============================
 # 7. Broker SLAVE
 # 宿主机目录结构：
-#   store → /opt/dockerstore/rocketmq/broker-1/store（PVC）→ 容器 /opt/rocketmq/store
-#   logs  → /opt/dockerstore/rocketmq/broker-1/logs（hostPath）→ 容器 /home/rocketmq/logs
+#   store → /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-1/store（PVC）→ 容器 /opt/rocketmq/store
+#   logs  → /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-1/logs（hostPath）→ 容器 /home/rocketmq/logs
 # ===============================
 apiVersion: apps/v1
 kind: StatefulSet

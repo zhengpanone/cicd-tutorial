@@ -15,7 +15,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/jenkins/config
+    path: /run/desktop/mnt/host/e/dockerstore/jenkins/config
     type: DirectoryOrCreate
 
 ---
@@ -35,7 +35,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/jenkins/logs
+    path: /run/desktop/mnt/host/e/dockerstore/jenkins/logs
     type: DirectoryOrCreate
 
 ---
@@ -55,7 +55,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/jenkins/data
+    path: /run/desktop/mnt/host/e/dockerstore/jenkins/data
     type: DirectoryOrCreate
 
 ---
