@@ -14,26 +14,8 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/mongodb/data
+    path: /run/desktop/mnt/host/e/dockerstore/mongodb/data
     type: DirectoryOrCreate
-
----
-# 2. 创建 PersistentVolumeClaim (PVC)
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: mongodb-data-pvc
-  namespace: default
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: manual
-  resources:
-    requests:
-      storage: 10Gi
-  selector:
-    matchLabels:
-      app: mongodb
 
 ---
 # 3. 创建 ConfigMap (MongoDB 配置文件)
@@ -88,18 +70,34 @@ stringData:
   MONGO_INITDB_ROOT_PASSWORD: mongodb123456
 
 ---
-# 5. 创建 Deployment
+# 5. Headless Service（StatefulSet 必须配）
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-headless
+  namespace: default
+  labels:
+    app: mongodb
+spec:
+  clusterIP: None          # 关键：Headless
+  selector:
+    app: mongodb
+  ports:
+    - port: 27017
+      targetPort: 27017
+      name: mongodb
+---
+# 6. 创建 StatefulSet（MongoDB 部署）
 apiVersion: apps/v1
-kind: Deployment
+kind: StatefulSet
 metadata:
   name: mongodb
   namespace: default
   labels:
     app: mongodb
 spec:
+  serviceName: mongodb-headless
   replicas: 1
-  strategy:
-    type: Recreate
   selector:
     matchLabels:
       app: mongodb
@@ -159,9 +157,6 @@ spec:
             timeoutSeconds: 3
             failureThreshold: 3
       volumes:
-        - name: mongodb-storage
-          persistentVolumeClaim:
-            claimName: mongodb-data-pvc
         - name: mongodb-config
           configMap:
             name: mongodb-config
@@ -170,6 +165,21 @@ spec:
                 path: mongod.conf
         - name: mongodb-log
           emptyDir: {}
+
+  # ✅ 改用 volumeClaimTemplates，自动创建 mongodb-storage-mongodb-0
+  volumeClaimTemplates:
+    - metadata:
+        name: mongodb-storage
+      spec:
+        accessModes:
+          - ReadWriteOnce
+        storageClassName: manual
+        resources:
+          requests:
+            storage: 10Gi
+        selector:
+          matchLabels:
+            app: mongodb
 
 ---
 # 7. 创建 Service (NodePort - 外部访问)
