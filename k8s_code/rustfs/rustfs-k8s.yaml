@@ -12,7 +12,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/rustfs/data
+    path: /run/desktop/mnt/host/e/dockerstore/rustfs/data
     type: DirectoryOrCreate
 ---
 apiVersion: v1
@@ -29,6 +29,18 @@ spec:
   resources:
     requests:
       storage: 5Gi
+  selector:                  # 加这里
+    matchLabels:
+      app: rustfs
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: rustfs-secret
+type: Opaque
+stringData:
+  RUSTFS_ACCESS_KEY: "rustfsadmin"
+  RUSTFS_SECRET_KEY: "rustfsadmin"
 ---
 apiVersion: apps/v1
 kind: Deployment
@@ -61,14 +73,22 @@ spec:
             - name: RUSTFS_VOLUMES
               value: /data/rustfs0
             - name: RUSTFS_ADDRESS
-              value: 0.0.0.0:9000
+              value: ":9000"
             - name: RUSTFS_CONSOLE_ADDRESS
-              value: 0.0.0.0:9001
+              value: ":9001"
             - name: RUSTFS_ACCESS_KEY
-              value: rustfsadmin
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-secret
+                  key: RUSTFS_ACCESS_KEY
             - name: RUSTFS_SECRET_KEY
-              value: rustfsadmin
+              valueFrom:
+                secretKeyRef:
+                  name: rustfs-secret
+                  key: RUSTFS_SECRET_KEY
             - name: RUSTFS_CONSOLE_ENABLE
+              value: "true"
+            - name: RUSTFS_ALLOW_INSECURE_DEFAULT_CREDENTIALS
               value: "true"
 
           livenessProbe:
@@ -105,7 +125,7 @@ spec:
             claimName: rustfs-pvc
         - name: rustfs-logs
           hostPath:
-            path: /opt/dockerstore/rustfs/logs
+            path: /run/desktop/mnt/host/e/dockerstore/rustfs/logs
             type: DirectoryOrCreate
 ---
 apiVersion: v1
@@ -122,10 +142,10 @@ spec:
     - name: api
       port: 9000
       targetPort: 9000
-      nodePort: 30900
+      nodePort: 31900
       protocol: TCP
     - name: console
       port: 9001
       targetPort: 9001
-      nodePort: 30901
+      nodePort: 31901
       protocol: TCP
