@@ -14,7 +14,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual # 必须与 PVC 的 storageClassName 一致
   hostPath:
-    path: /opt/dockerstore/etcd
+    path: /run/desktop/mnt/host/e/dockerstore/etcd
     type: DirectoryOrCreate # 如果目录不存在，自动创建
 ---
 apiVersion: v1

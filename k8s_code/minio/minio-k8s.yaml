@@ -15,7 +15,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/minio/data
+    path: /run/desktop/mnt/host/e/dockerstore/minio/data
     type: DirectoryOrCreate
 
 ---
@@ -133,10 +133,10 @@ spec:
     - protocol: TCP
       port: 9000
       targetPort: 9000
-      nodePort: 30001
+      nodePort: 30900 # 30000-32767
       name: api
     - protocol: TCP
       port: 9001
       targetPort: 9001
-      nodePort: 30002 # 30000-32767
+      nodePort: 30901 # 30000-32767
       name: console

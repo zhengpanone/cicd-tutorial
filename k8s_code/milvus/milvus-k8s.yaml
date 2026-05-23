@@ -15,7 +15,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /opt/dockerstore/milvus/data
+    path: /run/desktop/mnt/host/e/dockerstore/milvus/data
     type: DirectoryOrCreate
 
 ---
