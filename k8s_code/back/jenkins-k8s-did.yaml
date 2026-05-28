@@ -1,0 +1,311 @@
+---
+# 1. 创建 PersistentVolume (PV) - Jenkins 配置
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jenkins-config-pv
+  labels:
+    app: jenkins
+    type: config
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /run/desktop/mnt/host/e/dockerstore/jenkins/config
+    type: DirectoryOrCreate
+
+---
+# 2. 创建 PersistentVolume (PV) - Jenkins 日志
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jenkins-logs-pv
+  labels:
+    app: jenkins
+    type: logs
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /run/desktop/mnt/host/e/dockerstore/jenkins/logs
+    type: DirectoryOrCreate
+
+---
+# 3. 创建 PersistentVolume (PV) - Jenkins 数据
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jenkins-data-pv
+  labels:
+    app: jenkins
+    type: data
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /run/desktop/mnt/host/e/dockerstore/jenkins/data
+    type: DirectoryOrCreate
+
+---
+# 4. 创建 PersistentVolumeClaim (PVC) - Config
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jenkins-config-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      app: jenkins
+      type: config
+
+---
+# 5. 创建 PersistentVolumeClaim (PVC) - Logs
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jenkins-logs-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      app: jenkins
+      type: logs
+
+---
+# 6. 创建 PersistentVolumeClaim (PVC) - Data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jenkins-data-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 20Gi
+  selector:
+    matchLabels:
+      app: jenkins
+      type: data
+
+---
+# 7. 创建 ConfigMap - Jenkins 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-config
+  namespace: default
+data:
+  JENKINS_OPTS: |
+    --httpPort=8080
+    --webroot=/var/cache/jenkins/war
+    --prefix=/jenkins
+
+  JENKINS_JAVA_OPTS: |
+    -Djava.awt.headless=true
+    -Djenkins.install.runSetupWizard=false
+    -Dhudson.model.DirectoryBrowserSupport.CSP=""
+    -Xmx2g
+    -Xms512m
+    -XX:MaxMetaspaceSize=512m
+    -XX:MetaspaceSize=256m
+    -Duser.timezone=Asia/Shanghai
+
+---
+# 8. 创建 ConfigMap - 初始化 Groovy 脚本
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-init-config
+  namespace: default
+data:
+  01-create-admin.groovy: |
+    import jenkins.model.*
+    import hudson.security.*
+
+    def instance = Jenkins.getInstance()
+    def hudsonRealm = new HudsonPrivateSecurityRealm(false)
+    hudsonRealm.createAccount("admin", "jenkins123456")
+    instance.setSecurityRealm(hudsonRealm)
+
+    def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+    instance.setAuthorizationStrategy(strategy)
+
+    // 设置 Jenkins URL
+    instance.setSystemMessage("Jenkins initialized via Kubernetes")
+    instance.setRootUrl("http://127.0.0.1:30090/jenkins")  // <-- 这里改成你的外部访问地址
+
+    instance.save()
+
+---
+# 9. 创建 Secret - 管理员账号
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jenkins-secret
+  namespace: default
+type: Opaque
+stringData:
+  JENKINS_ADMIN_USER: admin
+  JENKINS_ADMIN_PASSWORD: jenkins123456
+
+---
+# 10. 创建 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+  namespace: default
+  labels:
+    app: jenkins
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: jenkins
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 0
+        runAsGroup: 0
+      hostname: jenkins
+      containers:
+        - name: jenkins
+          image: jenkins/jenkins:2.538-jdk21
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 50000
+              name: jnlp
+          env:
+            - name: JENKINS_OPTS
+              valueFrom:
+                configMapKeyRef:
+                  name: jenkins-config
+                  key: JENKINS_OPTS
+            - name: JAVA_OPTS
+              valueFrom:
+                configMapKeyRef:
+                  name: jenkins-config
+                  key: JENKINS_JAVA_OPTS
+
+            - name: DOCKER_HOST
+              value: tcp://localhost:2375
+
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+            - name: jenkins-logs
+              mountPath: /var/log/jenkins
+            - name: jenkins-init
+              mountPath: /var/jenkins_home/init.groovy.d
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /jenkins/login
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /jenkins/login
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          # Docker in Docker
+        - name: docker
+          image: docker:26-dind
+          securityContext:
+            privileged: true
+          command:
+            - dockerd
+            - "--host=tcp://0.0.0.0:2375"
+            - "--host=unix:///var/run/docker.sock"
+          env:
+            - name: DOCKER_TLS_CERTDIR
+              value: ""
+          volumeMounts:
+            - name: docker-storage
+              mountPath: /var/lib/docker
+
+      volumes:
+        - name: jenkins-data
+          persistentVolumeClaim:
+            claimName: jenkins-data-pvc
+        - name: jenkins-logs
+          persistentVolumeClaim:
+            claimName: jenkins-logs-pvc
+        - name: jenkins-init
+          configMap:
+            name: jenkins-init-config
+        - name: docker-storage
+          emptyDir: {}
+
+---
+# 11. 创建 Service (NodePort - 外部访问)
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-service-nodeport
+  namespace: default
+  labels:
+    app: jenkins
+spec:
+  selector:
+    app: jenkins
+  type: NodePort
+  ports:
+    - port: 8080
+      targetPort: 8080
+      nodePort: 30090
+      protocol: TCP
+      name: http
+    - port: 50000
+      targetPort: 50000
+      nodePort: 30091
+      protocol: TCP
+      name: jnlp

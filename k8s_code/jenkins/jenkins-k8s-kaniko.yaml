@@ -1,0 +1,378 @@
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: devops
+---
+# 1. 创建 PersistentVolume (PV) - Jenkins 配置
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jenkins-config-pv
+  namespace: devops
+  labels:
+    app: jenkins
+    type: config
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /run/desktop/mnt/host/e/dockerstore/jenkins/config
+    type: DirectoryOrCreate
+
+---
+# 2. 创建 PersistentVolume (PV) - Jenkins 日志
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jenkins-logs-pv
+  namespace: devops
+  labels:
+    app: jenkins
+    type: logs
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /run/desktop/mnt/host/e/dockerstore/jenkins/logs
+    type: DirectoryOrCreate
+
+---
+# 3. 创建 PersistentVolume (PV) - Jenkins 数据
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: jenkins-data-pv
+  namespace: devops
+  labels:
+    app: jenkins
+    type: data
+spec:
+  capacity:
+    storage: 20Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /run/desktop/mnt/host/e/dockerstore/jenkins/data
+    type: DirectoryOrCreate
+
+---
+# 4. 创建 PersistentVolumeClaim (PVC) - Config
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jenkins-config-pvc
+  namespace: devops
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      app: jenkins
+      type: config
+
+---
+# 5. 创建 PersistentVolumeClaim (PVC) - Logs
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jenkins-logs-pvc
+  namespace: devops
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 5Gi
+  selector:
+    matchLabels:
+      app: jenkins
+      type: logs
+
+---
+# 6. 创建 PersistentVolumeClaim (PVC) - Data
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jenkins-data-pvc
+  namespace: devops
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 20Gi
+  selector:
+    matchLabels:
+      app: jenkins
+      type: data
+
+---
+# 7. 创建 ConfigMap - Jenkins 配置
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-config
+  namespace: devops
+data:
+  JENKINS_OPTS: |
+    --httpPort=8080
+    --webroot=/var/cache/jenkins/war
+    --prefix=/jenkins
+
+  JENKINS_JAVA_OPTS: |
+    -Djava.awt.headless=true
+    -Djenkins.install.runSetupWizard=false
+    -Dhudson.model.DirectoryBrowserSupport.CSP=""
+    -Xmx2g
+    -Xms512m
+    -XX:MaxMetaspaceSize=512m
+    -XX:MetaspaceSize=256m
+    -Duser.timezone=Asia/Shanghai
+
+---
+# 9. 创建 Secret - 管理员账号
+apiVersion: v1
+kind: Secret
+metadata:
+  name: jenkins-secret
+  namespace: devops
+type: Opaque
+stringData:
+  JENKINS_ADMIN_USER: admin
+  JENKINS_ADMIN_PASSWORD: jenkins123456
+
+---
+# 10. 创建 Deployment
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: jenkins
+  namespace: devops
+  labels:
+    app: jenkins
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: jenkins
+  template:
+    metadata:
+      labels:
+        app: jenkins
+    spec:
+      securityContext:
+        fsGroup: 1000
+        runAsUser: 0
+        runAsGroup: 0
+      serviceAccountName: jenkins
+      hostname: jenkins
+      containers:
+        - name: jenkins
+          image: jenkins/jenkins:2.538-jdk21
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+            - containerPort: 50000
+              name: jnlp
+          env:
+            - name: JENKINS_OPTS
+              valueFrom:
+                configMapKeyRef:
+                  name: jenkins-config
+                  key: JENKINS_OPTS
+            - name: JAVA_OPTS
+              valueFrom:
+                configMapKeyRef:
+                  name: jenkins-config
+                  key: JENKINS_JAVA_OPTS
+            - name: JENKINS_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: jenkins-secret
+                  key: JENKINS_ADMIN_USER
+            - name: JENKINS_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: jenkins-secret
+                  key: JENKINS_ADMIN_PASSWORD
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+            - name: jenkins-logs
+              mountPath: /var/log/jenkins
+
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1000m"
+            limits:
+              memory: "4Gi"
+              cpu: "2000m"
+          livenessProbe:
+            httpGet:
+              path: /jenkins/login
+              port: 8080
+            initialDelaySeconds: 120
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /jenkins/login
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+
+        - name: maven
+          image: maven:3.9.9-eclipse-temurin-21
+          command: ["sleep", "infinity"] # 保持容器运行
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: maven-repo
+              mountPath: /root/.m2/repository
+        - name: kubectl
+          image: bitnami/kubectl:latest
+          command: ["sleep", "infinity"]
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+
+      volumes:
+        - name: jenkins-data
+          persistentVolumeClaim:
+            claimName: jenkins-data-pvc
+        - name: jenkins-logs
+          persistentVolumeClaim:
+            claimName: jenkins-logs-pvc
+        - name: jenkins-init
+          configMap:
+            name: jenkins-init-config
+        - name: maven-repo
+          emptyDir: {}  
+        # - name: docker-config
+        #   configMap:  
+        #       name: docker-config  
+
+---
+# 11. 创建 Service (NodePort - 外部访问)
+apiVersion: v1
+kind: Service
+metadata:
+  name: jenkins-service-nodeport
+  namespace: devops
+  labels:
+    app: jenkins
+spec:
+  selector:
+    app: jenkins
+  type: NodePort
+  ports:
+    - name: http
+      port: 8080
+      targetPort: 8080
+      nodePort: 30090
+      protocol: TCP
+    - name: jnlp
+      port: 50000
+      targetPort: 50000
+      nodePort: 30091
+---
+# Kaniko 本身不需要权限 但是Jenkins Kubernetes Plugin 需要创建 Pod
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: jenkins
+  namespace: devops
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: jenkins
+rules:
+  - apiGroups: [""]
+    resources:
+      - pods
+      - pods/log
+      - services
+      - secrets
+      - configmaps
+    verbs:
+      - create
+      - delete
+      - get
+      - list
+      - patch
+      - update
+      - watch
+
+  - apiGroups: [""]
+    resources:
+      - persistentvolumeclaims
+    verbs:
+      - get
+      - list
+      - watch
+
+  - apiGroups: ["apps"]
+    resources:
+      - deployments
+    verbs:
+      - get
+      - list
+      - watch
+      - patch
+      - update
+
+  - apiGroups: [""]
+    resources:
+      - events
+    verbs:
+      - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: jenkins
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: jenkins
+subjects:
+  - kind: ServiceAccount
+    name: jenkins
+    namespace: devops
+
