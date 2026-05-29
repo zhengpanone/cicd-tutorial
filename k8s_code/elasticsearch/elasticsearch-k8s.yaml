@@ -1,23 +1,32 @@
 ---
-# 1. 创建 PersistentVolume (PV) - 日志存储
+# ---------------------------------------------------------------
+# 1. PersistentVolume - data（3个，对应3个Pod的volumeClaimTemplates）
+#    claimRef 预绑定，防止被其他 PVC 抢占
+# ---------------------------------------------------------------
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: es-logs-pv
+  name: es-data-pv-0
   labels:
     app: elasticsearch
-    type: logs
+    type: data
+    pod: elasticsearch-0
 spec:
   capacity:
-    storage: 5Gi
+    storage: 30Gi
   accessModes:
-    - ReadWriteMany
+    - ReadWriteOnce
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    name: data-elasticsearch-0
+    namespace: default
   hostPath:
-    path: /opt/dockerstore/elasticsearch/logs
+    path: /run/desktop/mnt/host/e/dockerstore/elasticsearch/data-0
     type: DirectoryOrCreate
-
+ 
 ---
 # 2. 创建 ConfigMap (Elasticsearch 配置)
 apiVersion: v1
@@ -30,19 +39,11 @@ data:
     cluster.name: es-cluster
     network.host: 0.0.0.0
 
-    discovery.seed_hosts:
-      - elasticsearch-0.elasticsearch-headless.default.svc.cluster.local
-      - elasticsearch-1.elasticsearch-headless.default.svc.cluster.local
-      - elasticsearch-2.elasticsearch-headless.default.svc.cluster.local
-    cluster.initial_master_nodes:
-      - elasticsearch-0
-      - elasticsearch-1
-      - elasticsearch-2
+    discovery.type: single-node
 
     node.roles: [ master, data, ingest ]
 
     path.data: /usr/share/elasticsearch/data
-    path.logs: /usr/share/elasticsearch/logs
 
     bootstrap.memory_lock: false
     http.port: 9200
@@ -59,8 +60,6 @@ data:
     http.cors.allow-headers: "X-Requested-With,Content-Type,Content-Length,Authorization"
 
   jvm.options: |
-    -Xms1g
-    -Xmx1g
     -XX:+UseG1GC
     -XX:G1ReservePercent=25
     -XX:InitiatingHeapOccupancyPercent=30
@@ -77,65 +76,8 @@ data:
     -Dio.netty.recycler.maxCapacityPerThread=0
     -Dlog4j.shutdownHookEnabled=false
     -Dlog4j2.disable.jmx=true
-    -Xlog:gc*,gc+age=trace,safepoint:file=/usr/share/elasticsearch/logs/gc.log:utctime,pid,tags:filecount=32,filesize=64m
 
----
-# 3. 创建 Job - 初始化目录权限
-apiVersion: batch/v1
-kind: Job
-metadata:
-  name: es-init-permissions
-  namespace: default
-spec:
-  template:
-    spec:
-      restartPolicy: OnFailure
-      containers:
-      - name: init
-        image: busybox:1.36
-        command: ['sh', '-c']
-        args:
-          - |
-            echo "初始化 Elasticsearch 数据目录..."
-            mkdir -p /usr/share/elasticsearch/data
-            mkdir -p /usr/share/elasticsearch/logs
-            chown -R 1000:1000 /usr/share/elasticsearch
-            chmod -R 755 /usr/share/elasticsearch
-            echo "完成"
-        volumeMounts:
-        - name: data
-          mountPath: /usr/share/elasticsearch/data
-        - name: logs
-          mountPath: /usr/share/elasticsearch/logs
-      volumes:
-      - name: data
-        hostPath:
-          path: /opt/dockerstore/elasticsearch/data
-          type: DirectoryOrCreate
-      - name: logs
-        hostPath:
-          path: /opt/dockerstore/elasticsearch/logs
-          type: DirectoryOrCreate
-
----
-# 4. 创建 PersistentVolumeClaim (PVC) - Logs
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: es-logs-pvc
-  namespace: default
-spec:
-  accessModes:
-    - ReadWriteMany
-  storageClassName: manual
-  resources:
-    requests:
-      storage: 5Gi
-  selector:
-    matchLabels:
-      app: elasticsearch
-      type: logs
-
+       
 ---
 # 5. 创建 Headless Service (用于集群发现)
 apiVersion: v1
@@ -166,7 +108,7 @@ metadata:
     app: elasticsearch
 spec:
   serviceName: elasticsearch-headless
-  replicas: 3
+  replicas: 1
   selector:
     matchLabels:
       app: elasticsearch
@@ -175,23 +117,16 @@ spec:
       labels:
         app: elasticsearch
     spec:
-      initContainers:
-      - name: sysctl
-        image: busybox:1.36
-        command: ['sh', '-c', 'sysctl -w vm.max_map_count=262144']
-        securityContext:
-          privileged: true
-      - name: fix-permissions
-        image: busybox:1.36
-        command: ['sh', '-c', 'chown -R 1000:1000 /usr/share/elasticsearch && chmod -R 755 /usr/share/elasticsearch']
-        securityContext:
-          runAsUser: 0
-        volumeMounts:
-        - name: data
-          mountPath: /usr/share/elasticsearch/data
+      securityContext:
+        # 在 Pod 级别设置 fsGroup，这样所有容器都能正确访问挂载的卷
+        fsGroup: 1000
       containers:
       - name: elasticsearch
-        image: elasticsearch:8.19.8
+        image: elasticsearch:8.13.4
+        securityContext:
+          # Elasticsearch容器默认以UID 1000运行
+          runAsUser: 1000
+          runAsGroup: 1000
         imagePullPolicy: IfNotPresent
         ports:
         - containerPort: 9200
@@ -199,19 +134,17 @@ spec:
         - containerPort: 9300
           name: transport
         env:
+        - name: ES_JAVA_OPTS
+          value: "-Xms512m -Xmx512m"
         - name: node.name
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
-        - name: ES_JAVA_OPTS
-          value: "-Xms1g -Xmx1g"
-        - name: ELASTIC_PASSWORD
-          value: "elastic123"
+        - name: discovery.type
+          value: single-node
         volumeMounts:
         - name: data
           mountPath: /usr/share/elasticsearch/data
-        - name: logs
-          mountPath: /usr/share/elasticsearch/logs
         - name: config
           mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
           subPath: elasticsearch.yml
@@ -220,11 +153,11 @@ spec:
           subPath: jvm.options
         resources:
           requests:
-            memory: "2Gi"
+            memory: "1Gi"
             cpu: "1000m"
           limits:
-            memory: "2Gi"
-            cpu: "2000m"
+            memory: "1Gi"
+            cpu: "1000m"
         livenessProbe:
           httpGet:
             path: /_cluster/health?local=true
@@ -235,19 +168,22 @@ spec:
           failureThreshold: 3
         readinessProbe:
           httpGet:
-            path: /_cluster/health?wait_for_status=yellow&timeout=5s
+            path: /_cluster/health?local=true
             port: 9200
           initialDelaySeconds: 60
           periodSeconds: 10
           timeoutSeconds: 5
           failureThreshold: 3
       volumes:
+      # logs 直接 hostPath 挂载，不走 PV/PVC
       - name: logs
-        persistentVolumeClaim:
-          claimName: es-logs-pvc
+        hostPath:
+          path: /run/desktop/mnt/host/e/dockerstore/elasticsearch/logs
+          type: DirectoryOrCreate
       - name: config
         configMap:
           name: es-config
+
   volumeClaimTemplates:
   - metadata:
       name: data
@@ -257,10 +193,6 @@ spec:
       resources:
         requests:
           storage: 30Gi
-      selector:
-        matchLabels:
-          app: elasticsearch
-          type: data
 
 ---
 # 7. 创建 ClusterIP Service
@@ -280,13 +212,9 @@ spec:
     targetPort: 9200
     protocol: TCP
     name: http
-  - port: 9300
-    targetPort: 9300
-    protocol: TCP
-    name: transport
 
 ---
-# 8. 创建 NodePort Service
+# 8. 创建 NodePort Service（本地测试外部访问入口）
 apiVersion: v1
 kind: Service
 metadata:
@@ -304,29 +232,3 @@ spec:
     nodePort: 30920
     protocol: TCP
     name: http
-
----
-# 9. 创建 Ingress (可选)
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: elasticsearch-ingress
-  namespace: default
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "100m"
-    nginx.ingress.kubernetes.io/proxy-connect-timeout: "600"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: es.example.com
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: elasticsearch-service
-            port:
-              number: 9200
