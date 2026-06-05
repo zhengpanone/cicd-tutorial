@@ -1,0 +1,241 @@
+# 1-pv.yaml
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: emqx-data-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /run/desktop/mnt/host/e/dockerstore/emqx/data
+    type: DirectoryOrCreate
+---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: emqx-config-pv
+spec:
+  capacity:
+    storage: 5Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /run/desktop/mnt/host/e/dockerstore/emqx/config
+    type: DirectoryOrCreate
+--- 
+# 2-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: emqx-data-pvc  
+spec:
+  accessModes:
+  - ReadWriteMany
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: emqx-config-pvc  
+spec:
+  accessModes:
+  - ReadWriteMany
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 10Gi
+---                 
+# 3-configmap.yaml
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: emqx-config
+  
+data:
+  emqx.conf: |
+    # EMQX 基本配置
+    node.name = emqx@${EMQX_NODE_NAME}
+    node.cookie = emqxsecretcookie
+    cluster.discovery = k8s
+    cluster.k8s.apiserver = https://kubernetes.default.svc:443
+    cluster.k8s.service_name = emqx-headless
+    cluster.k8s.namespace = emqx
+    cluster.k8s.address_type = hostname
+    # 监听器配置
+    listener.tcp.external = 0.0.0.0:1883
+    listener.ssl.external = 0.0.0.0:8883
+    listener.ws.external = 0.0.0.0:8083
+    listener.wss.external = 0.0.0.0:8084
+    # 认证配置（可选）
+    authentication.jwt.use_jwks = true
+    authentication.jwt.from = password
+    # 日志级别
+    log.level = warning
+  enabled_plugins.conf: |
+    emqx_auth_jwt,emqx_auth_mnesia,emqx_management,emqx_retainer,emqx_rule_engine,emqx_bridge_mqtt
+---
+# 4-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: emqx
+  
+  labels:
+    app: emqx
+    component: mqtt-broker
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: emqx
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: emqx
+    spec:
+      terminationGracePeriodSeconds: 60
+      containers:
+      - name: emqx
+        image: emqx/emqx:5.3.0
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: EMQX_NODE_NAME
+          valueFrom:
+            fieldRef:
+              fieldPath: metadata.name
+        - name: EMQX_NODE__COOKIE
+          valueFrom:
+            secretKeyRef:
+              name: emqx-cookie
+              key: cookie
+        - name: EMQX_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: emqx-api-key
+              key: key
+        ports:
+        - name: mqtt
+          containerPort: 1883
+          protocol: TCP
+        - name: mqtts
+          containerPort: 8883
+          protocol: TCP
+        - name: ws
+          containerPort: 8083
+          protocol: TCP
+        - name: wss
+          containerPort: 8084
+          protocol: TCP
+        - name: dashboard
+          containerPort: 18083
+          protocol: TCP
+        - name: management
+          containerPort: 8081
+          protocol: TCP
+        livenessProbe:
+          httpGet:
+            path: /status
+            port: 8081
+          initialDelaySeconds: 60
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /status
+            port: 8081
+          initialDelaySeconds: 20
+          periodSeconds: 5
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "2Gi"
+            cpu: "1000m"
+        volumeMounts:
+        - name: config
+          mountPath: /opt/emqx/etc/emqx.conf
+          subPath: emqx.conf
+        - name: plugins-config
+          mountPath: /opt/emqx/data/loaded_plugins
+          subPath: loaded_plugins
+        - name: data
+          mountPath: /opt/emqx/data
+      volumes:
+      - name: config
+        persistentVolumeClaim:
+          claimName: emqx-config-pvc
+      - name: plugins-config
+        configMap:
+          name: emqx-config
+          items:
+          - key: enabled_plugins.conf
+            path: loaded_plugins
+      - name: data
+        persistentVolumeClaim:
+          claimName: emqx-data-pvc
+---
+# 5-service.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: emqx
+  
+  labels:
+    app: emqx
+spec:
+  type: LoadBalancer
+  ports:
+  - name: mqtt
+    port: 1883
+    targetPort: 1883
+    protocol: TCP
+  - name: mqtts
+    port: 8883
+    targetPort: 8883
+    protocol: TCP
+  - name: ws
+    port: 8083
+    targetPort: 8083
+    protocol: TCP
+  - name: wss
+    port: 8084
+    targetPort: 8084
+    protocol: TCP
+  - name: dashboard
+    port: 18083
+    targetPort: 18083
+    protocol: TCP
+  selector:
+    app: emqx
+---
+# Headless Service (用于集群发现)
+apiVersion: v1
+kind: Service
+metadata:
+  name: emqx-headless
+  
+spec:
+  clusterIP: None
+  ports:
+  - name: epmd
+    port: 4369
+  - name: emqx-dist
+    port: 4370
+  selector:
+    app: emqx
+
+
