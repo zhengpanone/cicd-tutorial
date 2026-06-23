@@ -1,36 +1,15 @@
-# Namespace
+﻿# Namespace
 apiVersion: v1
 kind: Namespace
 metadata:
   name: devops
----
-# 1. 创建 PersistentVolume (PV) - Jenkins 配置
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: jenkins-config-pv
-  namespace: devops
-  labels:
-    app: jenkins
-    type: config
-spec:
-  capacity:
-    storage: 5Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /run/desktop/mnt/host/e/dockerstore/jenkins/config
-    type: DirectoryOrCreate
 
 ---
-# 2. 创建 PersistentVolume (PV) - Jenkins 日志
+# PersistentVolume - Jenkins logs
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: jenkins-logs-pv
-  namespace: devops
   labels:
     app: jenkins
     type: logs
@@ -46,12 +25,11 @@ spec:
     type: DirectoryOrCreate
 
 ---
-# 3. 创建 PersistentVolume (PV) - Jenkins 数据
+# PersistentVolume - Jenkins data
 apiVersion: v1
 kind: PersistentVolume
 metadata:
   name: jenkins-data-pv
-  namespace: devops
   labels:
     app: jenkins
     type: data
@@ -67,26 +45,27 @@ spec:
     type: DirectoryOrCreate
 
 ---
-# 4. 创建 PersistentVolumeClaim (PVC) - Config
+# PersistentVolume - Maven cache
 apiVersion: v1
-kind: PersistentVolumeClaim
+kind: PersistentVolume
 metadata:
-  name: jenkins-config-pvc
-  namespace: devops
+  name: jenkins-maven-repo-pv
+  labels:
+    app: jenkins
+    type: maven-repo
 spec:
+  capacity:
+    storage: 10Gi
   accessModes:
     - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
-  resources:
-    requests:
-      storage: 5Gi
-  selector:
-    matchLabels:
-      app: jenkins
-      type: config
+  hostPath:
+    path: /run/desktop/mnt/host/e/dockerstore/jenkins/maven-repo
+    type: DirectoryOrCreate
 
 ---
-# 5. 创建 PersistentVolumeClaim (PVC) - Logs
+# PersistentVolumeClaim - Jenkins logs
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -105,7 +84,7 @@ spec:
       type: logs
 
 ---
-# 6. 创建 PersistentVolumeClaim (PVC) - Data
+# PersistentVolumeClaim - Jenkins data
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -124,7 +103,26 @@ spec:
       type: data
 
 ---
-# 7. 创建 ConfigMap - Jenkins 配置
+# PersistentVolumeClaim - Maven cache
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: jenkins-maven-repo-pvc
+  namespace: devops
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 10Gi
+  selector:
+    matchLabels:
+      app: jenkins
+      type: maven-repo
+
+---
+# Jenkins runtime configuration
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -133,7 +131,7 @@ metadata:
 data:
   JENKINS_OPTS: |
     --httpPort=8080
-    --webroot=/var/cache/jenkins/war
+    --webroot=/var/jenkins_home/war
     --prefix=/jenkins
 
   JENKINS_JAVA_OPTS: |
@@ -147,7 +145,39 @@ data:
     -Duser.timezone=Asia/Shanghai
 
 ---
-# 9. 创建 Secret - 管理员账号
+# Jenkins init script for creating the first admin user
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-init-groovy
+  namespace: devops
+data:
+  01-create-admin-user.groovy: |
+    import hudson.security.HudsonPrivateSecurityRealm
+    import jenkins.model.Jenkins
+
+    def instance = Jenkins.get()
+    def user = System.getenv("JENKINS_ADMIN_USER") ?: "admin"
+    def password = System.getenv("JENKINS_ADMIN_PASSWORD")
+
+    if (!password) {
+      throw new IllegalStateException("JENKINS_ADMIN_PASSWORD is required")
+    }
+
+    def securityRealm = instance.getSecurityRealm()
+    if (!(securityRealm instanceof HudsonPrivateSecurityRealm)) {
+      securityRealm = new HudsonPrivateSecurityRealm(false)
+      instance.setSecurityRealm(securityRealm)
+    }
+
+    if (securityRealm.getUser(user) == null) {
+      securityRealm.createAccount(user, password)
+    }
+
+    instance.save()
+
+---
+# Admin credential. Change this password before using outside a local tutorial.
 apiVersion: v1
 kind: Secret
 metadata:
@@ -159,7 +189,22 @@ stringData:
   JENKINS_ADMIN_PASSWORD: jenkins123456
 
 ---
-# 10. 创建 Deployment
+# Optional Docker config for Kaniko registry push.
+# Replace the value with your real docker config JSON before using Kaniko to push images.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kaniko-docker-config
+  namespace: devops
+type: Opaque
+stringData:
+  config.json: |
+    {
+      "auths": {}
+    }
+
+---
+# Jenkins Deployment
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -181,14 +226,30 @@ spec:
     spec:
       securityContext:
         fsGroup: 1000
-        runAsUser: 0
-        runAsGroup: 0
       serviceAccountName: jenkins
       hostname: jenkins
+      initContainers:
+        - name: fix-jenkins-volume-permissions
+          image: busybox:1.36
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+            - chown -R 1000:1000 /var/jenkins_home /var/log/jenkins
+          securityContext:
+            runAsUser: 0
+          volumeMounts:
+            - name: jenkins-data
+              mountPath: /var/jenkins_home
+            - name: jenkins-logs
+              mountPath: /var/log/jenkins
       containers:
         - name: jenkins
-          image: jenkins/jenkins:2.538-jdk21
+          image: jenkins/jenkins:lts-jdk21
           imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
           ports:
             - containerPort: 8080
               name: http
@@ -220,7 +281,9 @@ spec:
               mountPath: /var/jenkins_home
             - name: jenkins-logs
               mountPath: /var/log/jenkins
-
+            - name: jenkins-init-groovy
+              mountPath: /var/jenkins_home/init.groovy.d
+              readOnly: true
           resources:
             requests:
               memory: "2Gi"
@@ -247,7 +310,8 @@ spec:
 
         - name: maven
           image: maven:3.9.9-eclipse-temurin-21
-          command: ["sleep", "infinity"] # 保持容器运行
+          imagePullPolicy: IfNotPresent
+          command: ["sleep", "infinity"]
           resources:
             requests:
               memory: "1Gi"
@@ -258,8 +322,10 @@ spec:
           volumeMounts:
             - name: maven-repo
               mountPath: /root/.m2/repository
+
         - name: kubectl
           image: bitnami/kubectl:latest
+          imagePullPolicy: IfNotPresent
           command: ["sleep", "infinity"]
           resources:
             requests:
@@ -269,6 +335,25 @@ spec:
               memory: "1Gi"
               cpu: "500m"
 
+        - name: kaniko
+          image: gcr.io/kaniko-project/executor:debug
+          imagePullPolicy: IfNotPresent
+          command: ["sleep", "infinity"]
+          env:
+            - name: DOCKER_CONFIG
+              value: /kaniko/.docker
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: kaniko-docker-config
+              mountPath: /kaniko/.docker
+              readOnly: true
+
       volumes:
         - name: jenkins-data
           persistentVolumeClaim:
@@ -276,17 +361,18 @@ spec:
         - name: jenkins-logs
           persistentVolumeClaim:
             claimName: jenkins-logs-pvc
-        - name: jenkins-init
-          configMap:
-            name: jenkins-init-config
         - name: maven-repo
-          emptyDir: {}  
-        # - name: docker-config
-        #   configMap:  
-        #       name: docker-config  
+          persistentVolumeClaim:
+            claimName: jenkins-maven-repo-pvc
+        - name: jenkins-init-groovy
+          configMap:
+            name: jenkins-init-groovy
+        - name: kaniko-docker-config
+          secret:
+            secretName: kaniko-docker-config
 
 ---
-# 11. 创建 Service (NodePort - 外部访问)
+# Service - NodePort
 apiVersion: v1
 kind: Service
 metadata:
@@ -308,8 +394,10 @@ spec:
       port: 50000
       targetPort: 50000
       nodePort: 30091
+      protocol: TCP
+
 ---
-# Kaniko 本身不需要权限 但是Jenkins Kubernetes Plugin 需要创建 Pod
+# Jenkins Kubernetes Plugin uses this account to create build pods.
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -325,6 +413,7 @@ rules:
   - apiGroups: [""]
     resources:
       - pods
+      - pods/exec
       - pods/log
       - services
       - secrets
@@ -360,6 +449,8 @@ rules:
     resources:
       - events
     verbs:
+      - get
+      - list
       - watch
 
 ---
@@ -375,4 +466,5 @@ subjects:
   - kind: ServiceAccount
     name: jenkins
     namespace: devops
+
 
