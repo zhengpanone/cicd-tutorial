@@ -22,26 +22,26 @@ services:
       - CATTLE_BOOTSTRAP_PASSWORD=admin123 # 初始密码，启动后可更改
 
   registry:
-    image: registry:latestEE
+    image: registry:3
     container_name: registry
     hostname: registry
     ports:
-      - "5001:5001"
+      - "5001:5000"
     volumes:
-      - /opt/dockerstore/registry:/var/lib/registry # 数据持久化
+      - ${DATA_PATH}/dockerstore/registry:/var/lib/registry # 数据持久化
     environment:
-      REGISTRY_HTTP_ADDR: :5001 # 配置 Docker Registry 监听的端口
+      REGISTRY_HTTP_ADDR: :5000 # 配置 Docker Registry 监听的端口
     restart: unless-stopped # 除非手动停止，否则总是重启
 
   registry-browser:
-    image: klausmeyer/docker-registry-browser:latest
+    image: klausmeyer/docker-registry-browser:1.9
     container_name: registry-browser
     ports:
       - "5002:8080"
     environment:
       SECRET_KEY_BASE: "123456"
       # 替换为你自己的内网IP
-      DOCKER_REGISTRY_URL: "http://registry:5001/v2"
+      DOCKER_REGISTRY_URL: "http://registry:5000/v2"
     depends_on:
       - registry # 确保 registry 服务先启动
     restart: unless-stopped
@@ -169,9 +169,9 @@ services:
       MONGO_INITDB_ROOT_USERNAME: root
       MONGO_INITDB_ROOT_PASSWORD: root
     volumes:
-      - "/opt/dockerstore/mongo/data:/data/db"
-      - "/opt/dockerstore/mongo/logs:/var/log/mongodb"
-      - "/opt/dockerstore/mongo/config:/etc/mongo"
+      - "${DATA_PATH}/dockerstore/mongo/data:/data/db"
+      - "${DATA_PATH}/dockerstore/mongo/logs:/var/log/mongodb"
+      - "${DATA_PATH}/dockerstore/mongo/config:/etc/mongo"
       # - "/usr/share/zoneinfo/Asia/Shanghai:/etc/localtime"
     healthcheck:
       test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
