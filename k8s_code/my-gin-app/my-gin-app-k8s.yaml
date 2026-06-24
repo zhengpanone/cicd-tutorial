@@ -17,7 +17,7 @@ spec:
     spec:
       containers:
         - name: my-gin-app
-          image: localhost:32000/my-gin-app:v1.3
+          image: host.docker.internal:5001/my-gin-app:v1.3
           imagePullPolicy: Always
           command: ["./my-gin-app", "-v", "1.3"]
           ports:
