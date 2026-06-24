@@ -1,8 +1,14 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: web-app
+
+---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-gin-app
-  namespace: test
+  namespace: web-app
   labels:
     app: my-gin-app
 spec:
@@ -40,7 +46,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: my-gin-app
-  namespace: test
+  namespace: web-app
   labels:
     app: my-gin-app
 spec:
@@ -52,3 +58,37 @@ spec:
       port: 8080
       targetPort: 8080
       protocol: TCP
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: gin-gateway
+  namespace: web-app
+spec:
+  gatewayClassName: nginx
+  listeners:
+    - name: http
+      port: 8080
+      protocol: HTTP
+      allowedRoutes:
+        namespaces:
+          from: Same
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: gin-route
+  namespace: web-app
+spec:
+  parentRefs:
+    - name: gin-gateway
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: my-gin-app
+          port: 8080
