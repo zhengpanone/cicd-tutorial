@@ -160,6 +160,54 @@ kubectl exec -n devops -it $POD_NAME -c kubectl -- sh
 kubectl exec -n devops -it $POD_NAME -c kaniko -- sh
 ```
 
+## kubectl kubeconfig Secret
+
+`kubectl` 容器需要 kubeconfig 才能访问 Kubernetes API。当前清单会把 `kubeconfig-secret` 挂载到：
+
+```text
+/home/jenkins/.kube/config
+```
+
+在应用 `jenkins-k8s-kaniko.yaml` 前，先创建 Secret：
+
+```bash
+kubectl create secret generic kubeconfig-secret \
+  -n devops \
+  --from-file=config=$HOME/.kube/config
+```
+
+Windows PowerShell 示例：
+
+```powershell
+kubectl create secret generic kubeconfig-secret `
+  -n devops `
+  --from-file=config=$env:USERPROFILE\.kube\config
+```
+
+如果 Secret 已存在，需要先删除再重建：
+
+```bash
+kubectl delete secret kubeconfig-secret -n devops
+kubectl create secret generic kubeconfig-secret \
+  -n devops \
+  --from-file=config=$HOME/.kube/config
+```
+
+Windows PowerShell 示例：
+
+```powershell
+kubectl delete secret kubeconfig-secret -n devops
+kubectl create secret generic kubeconfig-secret `
+  -n devops `
+  --from-file=config=$env:USERPROFILE\.kube\config
+```
+
+如果使用 Jenkins Kubernetes Plugin 动态创建 Agent Pod，还需要在对应 Pod Template 的 `kubectl` 容器中挂载同一个 `kubeconfig-secret`，并设置：
+
+```text
+KUBECONFIG=/home/jenkins/.kube/config
+```
+
 ## Kaniko 镜像仓库认证
 
 `kaniko-docker-config` 默认内容为空：

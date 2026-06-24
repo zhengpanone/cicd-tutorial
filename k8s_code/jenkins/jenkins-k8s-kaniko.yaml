@@ -327,6 +327,12 @@ spec:
           image: bitnami/kubectl:latest
           imagePullPolicy: IfNotPresent
           workingDir: /home/jenkins/agent
+          env:
+            - name: KUBECONFIG
+              value: /home/jenkins/.kube/config
+          volumeMounts:
+            - name: kubeconfig
+              mountPath: /home/jenkins/.kube
           command: ["cat"]
           stdin: true
           tty: true
@@ -358,6 +364,9 @@ spec:
               readOnly: true
 
       volumes:
+        - name: kubeconfig
+          secret:
+            secretName: kubeconfig-secret
         - name: jenkins-data
           persistentVolumeClaim:
             claimName: jenkins-data-pvc
