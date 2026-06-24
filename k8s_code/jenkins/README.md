@@ -1,331 +1,397 @@
-# Jenkins on Kubernetes
+﻿# Jenkins on Kubernetes with Kaniko
 
-Jenkins 是一个开源的持续集成和持续交付工具，用于自动化构建、测试和部署软件。
+这个目录提供一个可在 Docker Desktop Kubernetes 中运行的 Jenkins 示例。Jenkins 使用持久化存储保存数据和日志，并预置 Maven、kubectl、Kaniko 容器，方便在 Pipeline 中完成 Java 构建、Kubernetes 部署和镜像构建。
 
-# 部署步骤
+## 资源说明
+
+| 资源 | 说明 |
+| --- | --- |
+| `Namespace/devops` | Jenkins 所在命名空间 |
+| `Deployment/jenkins` | Jenkins 主服务，包含 `jenkins`、`maven`、`kubectl`、`kaniko` 四个容器 |
+| `Service/jenkins-service-nodeport` | 暴露 Jenkins Web 和 JNLP 端口 |
+| `PV/PVC` | 持久化 Jenkins 数据、日志、Maven 本地仓库 |
+| `ConfigMap/jenkins-config` | Jenkins 启动参数和 JVM 参数 |
+| `ConfigMap/jenkins-init-groovy` | 初始化管理员账号 |
+| `Secret/jenkins-secret` | 默认管理员账号密码 |
+| `Secret/kaniko-docker-config` | Kaniko 推送镜像使用的 Docker config，占位配置默认为空 |
+| `ServiceAccount/jenkins` + RBAC | Jenkins Kubernetes Plugin 创建构建 Pod 所需权限 |
+
+## 前置条件
+
+当前 YAML 按 Docker Desktop Kubernetes 编写，PV 使用如下 hostPath：
+
+```text
+/run/desktop/mnt/host/e/dockerstore/jenkins/data
+/run/desktop/mnt/host/e/dockerstore/jenkins/logs
+/run/desktop/mnt/host/e/dockerstore/jenkins/maven-repo
+```
+
+如果你的宿主机目录不是 `E:\dockerstore\jenkins`，需要先修改 `jenkins-k8s-kaniko.yaml` 中的三个 `hostPath.path`。
+
+确认当前 Kubernetes context：
 
 ```bash
-# 1. 部署 Jenkins
-kubectl apply -f jenkins-k8s.yaml
-
-# 2. 查看部署状态
-kubectl get all -l app=jenkins
-
-# 3. 查看 PV/PVC
-kubectl get pv,pvc | grep jenkins
-
-# 4. 查看 Pod 日志（Jenkins 启动需要几分钟）
-kubectl logs -l app=jenkins -f
-
-# 5. 等待 Pod 就绪（可能需要 3-5 分钟）
-kubectl wait --for=condition=ready pod -l app=jenkins --timeout=300s
+kubectl config current-context
 ```
 
-# 访问 Jenkins
+Docker Desktop 环境通常应显示：
+
+```text
+docker-desktop
+```
+
+## 部署
+
+在当前目录执行：
 
 ```bash
-# 获取访问地址
-NODE_IP=$(kubectl get nodes -o jsonpath='{.items[0].status.addresses[?(@.type=="InternalIP")].address}')
-echo "Jenkins 访问地址: http://${NODE_IP}:30090/jenkins"
-echo "管理员账号: admin"
-echo "管理员密码: jenkins123456"
+kubectl apply -f jenkins-k8s-kaniko.yaml
 ```
 
-**浏览器访问：**
-```
-URL: http://<NODE_IP>:30090/jenkins
-用户名: admin
-密码: jenkins123456
-```
-
-# 监控启动进度
+等待 Jenkins 启动完成：
 
 ```bash
-# 实时查看日志
-kubectl logs -l app=jenkins -f
-
-# 查看 Pod 状态
-watch kubectl get pods -l app=jenkins
-
-# 查看详细信息
-kubectl describe pod -l app=jenkins
+kubectl rollout status deployment/jenkins -n devops --timeout=240s
 ```
 
-**Jenkins 启动阶段提示：**
-```
-1. 容器创建中...
-2. Jenkins 服务初始化...（1-2分钟）
-3. 插件系统初始化...（1-2分钟）
-4. 服务启动完成 ✓
-```
-
-# 配置 Jenkins Agent
-
-## 配置 JNLP Agent
-```bash
-# 获取 Jenkins 服务地址
-JENKINS_URL=$(kubectl get service jenkins-service -o jsonpath='{.spec.clusterIP}')
-echo "Jenkins 内部地址: http://${JENKINS_URL}:8080/jenkins"
-
-# 在 Jenkins 中配置 Agent
-# 1. 访问 Jenkins -> 系统管理 -> 节点管理
-# 2. 新建节点 -> 选择 "Permanent Agent"
-# 3. 配置 Agent 参数
-# 4. 使用 JNLP 连接（端口 50000）
-```
-
-## 使用 Kubernetes Plugin（推荐）
-```bash
-# 安装 Kubernetes Plugin
-# 1. 访问 Jenkins -> 系统管理 -> 插件管理
-# 2. 搜索 "Kubernetes" 并安装
-# 3. 配置 Kubernetes Cloud
-# 4. 设置 Jenkins URL: http://jenkins-service:8080/jenkins
-```
-
-# Jenkins 配置管理
-
-## 查看当前配置
-```bash
-# 进入 Jenkins 容器
-POD_NAME=$(kubectl get pod -l app=jenkins -o jsonpath='{.items[0].metadata.name}')
-kubectl exec -it $POD_NAME -- bash
-
-# 查看 Jenkins 主目录
-ls -la /var/jenkins_home/
-
-# 查看配置文件
-cat /var/jenkins_home/config.xml
-
-# 查看插件目录
-ls -la /var/jenkins_home/plugins/
-```
-
-## 修改配置
-```bash
-# 编辑 ConfigMap
-kubectl edit configmap jenkins-config
-
-# 修改后重启 Deployment
-kubectl rollout restart deployment jenkins
-```
-
-# 备份和恢复
-
-## 备份 Jenkins 数据
-```bash
-# 进入容器执行备份
-POD_NAME=$(kubectl get pod -l app=jenkins -o jsonpath='{.items[0].metadata.name}')
-
-# 备份整个 Jenkins 目录
-kubectl exec -it $POD_NAME -- tar -czf /tmp/jenkins-backup.tar.gz -C /var/jenkins_home .
-
-# 复制备份到本地
-kubectl cp $POD_NAME:/tmp/jenkins-backup.tar.gz ./jenkins-backup-$(date +%Y%m%d).tar.gz
-
-# 查看备份文件
-ls -lh jenkins-backup-*.tar.gz
-```
-
-## 恢复 Jenkins 数据
-```bash
-# 停止 Jenkins
-kubectl scale deployment jenkins --replicas=0
-
-# 复制备份文件到容器
-kubectl cp ./jenkins-backup-20241109.tar.gz $POD_NAME:/tmp/restore.tar.gz
-
-# 解压备份
-kubectl exec -it $POD_NAME -- tar -xzf /tmp/restore.tar.gz -C /var/jenkins_home/
-
-# 重启 Jenkins
-kubectl scale deployment jenkins --replicas=1
-```
-
-# 日志查看
+查看 Pod 状态：
 
 ```bash
-# 查看容器日志
-kubectl logs -l app=jenkins --tail=100 -f
-
-# 查看 Jenkins 系统日志
-kubectl exec -it $POD_NAME -- tail -f /var/jenkins_home/logs/jenkins.log
-
-# 查看构建日志
-kubectl exec -it $POD_NAME -- tail -f /var/jenkins_home/jobs/*/builds/*/log
-
-# 在宿主机查看日志
-tail -f /mnt/host/d/dockerstore/jenkins/logs/jenkins.log
+kubectl get pods -n devops -l app=jenkins -o wide
 ```
 
-# 常用场景
+正常结果中应看到：
 
-## 1. 创建第一个 Pipeline
+```text
+READY   STATUS
+4/4     Running
+```
+
+查看 Service：
+
+```bash
+kubectl get svc -n devops jenkins-service-nodeport
+```
+
+## 访问 Jenkins
+
+浏览器访问：
+
+```text
+http://localhost:30090/jenkins/login
+```
+
+默认账号：
+
+```text
+用户名：admin
+密码：jenkins123456
+```
+
+> 注意：这个密码只适合本地教程环境。用于长期环境时，请修改 `jenkins-secret`，并重新启动 Deployment。
+
+验证访问：
+
+```bash
+curl -I http://localhost:30090/jenkins/login
+```
+
+Windows PowerShell 可以使用：
+
+```powershell
+Invoke-WebRequest -UseBasicParsing -Uri "http://localhost:30090/jenkins/login"
+```
+
+## 已验证状态
+
+本配置已在 Docker Desktop Kubernetes 中验证通过：
+
+```bash
+kubectl apply -f jenkins-k8s-kaniko.yaml
+kubectl rollout status deployment/jenkins -n devops --timeout=240s
+kubectl logs -n devops -l app=jenkins -c jenkins --tail=80
+```
+
+Jenkins 启动成功时，日志中会出现：
+
+```text
+Jenkins is fully up and running
+```
+
+## 容器说明
+
+Deployment 中包含四个容器：
+
+| 容器 | 镜像 | 用途 |
+| --- | --- | --- |
+| `jenkins` | `jenkins/jenkins:lts-jdk21` | Jenkins Web 和控制器 |
+| `maven` | `maven:3.9.9-eclipse-temurin-21` | Java/Maven 构建环境 |
+| `kubectl` | `bitnami/kubectl:latest` | 执行 Kubernetes 部署命令 |
+| `kaniko` | `gcr.io/kaniko-project/executor:debug` | 无 Docker daemon 构建并推送镜像 |
+
+查看指定容器日志：
+
+```bash
+kubectl logs -n devops -l app=jenkins -c jenkins --tail=100 -f
+```
+
+进入 Jenkins 容器：
+
+```bash
+POD_NAME=$(kubectl get pod -n devops -l app=jenkins -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n devops -it $POD_NAME -c jenkins -- bash
+```
+
+进入 Maven 容器：
+
+```bash
+kubectl exec -n devops -it $POD_NAME -c maven -- bash
+```
+
+进入 kubectl 容器：
+
+```bash
+kubectl exec -n devops -it $POD_NAME -c kubectl -- sh
+```
+
+进入 Kaniko 容器：
+
+```bash
+kubectl exec -n devops -it $POD_NAME -c kaniko -- sh
+```
+
+## Kaniko 镜像仓库认证
+
+`kaniko-docker-config` 默认内容为空：
+
+```json
+{
+  "auths": {}
+}
+```
+
+如果要推送镜像，需要替换为真实 registry 登录信息。推荐用下面方式重新创建 Secret：
+
+```bash
+kubectl delete secret kaniko-docker-config -n devops
+kubectl create secret generic kaniko-docker-config \
+  -n devops \
+  --from-file=config.json=$HOME/.docker/config.json
+kubectl rollout restart deployment/jenkins -n devops
+```
+
+Windows PowerShell 示例：
+
+```powershell
+kubectl delete secret kaniko-docker-config -n devops
+kubectl create secret generic kaniko-docker-config `
+  -n devops `
+  --from-file=config.json=$env:USERPROFILE\.docker\config.json
+kubectl rollout restart deployment/jenkins -n devops
+```
+
+## Pipeline 示例
+
+下面示例演示在当前 Jenkins Pod 的多容器环境中执行 Maven 构建、Kaniko 构建镜像、kubectl 部署。
+
 ```groovy
 pipeline {
     agent any
-    
+
+    environment {
+        IMAGE = 'your-registry.example.com/demo/my-springboot-app:latest'
+    }
+
     stages {
         stage('Build') {
             steps {
-                echo 'Building...'
-                sh 'mvn clean compile'
+                container('maven') {
+                    sh 'mvn -version'
+                    sh 'mvn clean package -DskipTests'
+                }
             }
         }
-        stage('Test') {
+
+        stage('Build Image') {
             steps {
-                echo 'Testing...'
-                sh 'mvn test'
+                container('kaniko') {
+                    sh '''
+                    /kaniko/executor \
+                      --context=${WORKSPACE} \
+                      --dockerfile=${WORKSPACE}/Dockerfile \
+                      --destination=${IMAGE}
+                    '''
+                }
             }
         }
+
         stage('Deploy') {
             steps {
-                echo 'Deploying...'
-                sh 'kubectl apply -f deployment.yaml'
+                container('kubectl') {
+                    sh 'kubectl apply -f k8s/deployment.yaml'
+                }
             }
         }
     }
 }
 ```
 
-## 2. 配置 Git 集成
-```bash
-# 在 Jenkins 中配置 Git 凭据
-# 1. 访问 Jenkins -> 凭据 -> 系统 -> 全局凭据
-# 2. 添加 Git 用户名密码或 SSH 密钥
+如果使用 Jenkins Kubernetes Plugin 动态创建 Agent Pod，需要在 Jenkins 中安装并配置 Kubernetes 插件；当前 YAML 已经创建了 `ServiceAccount/jenkins` 和相关 RBAC。
+
+## Jenkins Kubernetes Plugin 配置建议
+
+安装插件：
+
+1. 进入 Jenkins：`系统管理` -> `插件管理`
+2. 安装 `Kubernetes` 插件
+3. 进入 `系统管理` -> `Clouds` -> `New cloud` -> `Kubernetes`
+
+常用配置：
+
+```text
+Kubernetes URL: https://kubernetes.default.svc
+Kubernetes Namespace: devops
+Jenkins URL: http://jenkins-service-nodeport.devops.svc.cluster.local:8080/jenkins
+Jenkins tunnel: jenkins-service-nodeport.devops.svc.cluster.local:50000
+Credentials: 使用当前 Pod ServiceAccount，或手动配置 kubeconfig/token
 ```
 
-## 3. 配置 Docker 集成
+## 常用运维命令
+
+查看资源：
+
 ```bash
-# 在 Pod 中挂载 Docker socket
-# 修改 Deployment 添加 volume:
-volumes:
-- name: docker-sock
-  hostPath:
-    path: /var/run/docker.sock
-    type: Socket
+kubectl get all -n devops -l app=jenkins
+kubectl get pv | grep jenkins
+kubectl get pvc -n devops
 ```
 
-## 4. 配置 Kubernetes 集成
+查看事件：
+
 ```bash
-# 在 Jenkins 中配置 Kubernetes 凭据
-# 1. 安装 Kubernetes Credentials Plugin
-# 2. 添加 kubeconfig 文件作为凭据
+kubectl get events -n devops --sort-by='.lastTimestamp'
 ```
 
-# 扩展和优化
+重启 Jenkins：
 
-## 水平扩展
 ```bash
-# Jenkins 通常不需要水平扩展，但可以增加资源
-# 修改 Deployment 中的资源限制
-kubectl edit deployment jenkins
-
-# 增加内存和 CPU
-resources:
-  requests:
-    memory: "4Gi"
-    cpu: "2000m"
-  limits:
-    memory: "8Gi"
-    cpu: "4000m"
+kubectl rollout restart deployment/jenkins -n devops
+kubectl rollout status deployment/jenkins -n devops --timeout=240s
 ```
 
-## 查看资源使用
-```bash
-kubectl top pods -l app=jenkins
+查看配置：
 
-# 查看详细资源使用
-kubectl describe pod -l app=jenkins | grep -A 5 Resources
+```bash
+kubectl get configmap jenkins-config -n devops -o yaml
+kubectl get secret jenkins-secret -n devops -o yaml
 ```
 
-# 故障排查
+## 备份和恢复
+
+备份 Jenkins home：
 
 ```bash
-# 查看 Pod 详情
-kubectl describe pod -l app=jenkins
-
-# 查看事件
-kubectl get events --sort-by='.lastTimestamp' | grep jenkins
-
-# 进入容器调试
-kubectl exec -it $POD_NAME -- bash
-
-# 检查 Jenkins 服务状态
-curl http://localhost:8080/jenkins/login
-
-# 查看系统信息
-kubectl exec -it $POD_NAME -- java -jar /usr/share/jenkins/jenkins.war --version
-
-# 检查磁盘空间
-kubectl exec -it $POD_NAME -- df -h /var/jenkins_home
+POD_NAME=$(kubectl get pod -n devops -l app=jenkins -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n devops $POD_NAME -c jenkins -- tar -czf /tmp/jenkins-backup.tar.gz -C /var/jenkins_home .
+kubectl cp devops/$POD_NAME:/tmp/jenkins-backup.tar.gz ./jenkins-backup.tar.gz -c jenkins
 ```
 
-## 常见问题解决
+恢复时建议先停掉 Jenkins：
 
-### 1. Jenkins 启动缓慢
 ```bash
-# 检查资源是否充足
-kubectl top pods -l app=jenkins
-
-# 增加 Java 堆内存
-# 在 ConfigMap 中修改 JENKINS_JAVA_OPTS:
--Xmx4g -Xms2g
+kubectl scale deployment/jenkins -n devops --replicas=0
 ```
 
-### 2. 插件安装失败
-```bash
-# 检查网络连接
-kubectl exec -it $POD_NAME -- curl -I https://updates.jenkins.io
+恢复数据后再启动：
 
-# 手动安装插件
-kubectl exec -it $POD_NAME -- wget -P /var/jenkins_home/plugins/ https://updates.jenkins.io/download/plugins/workflow-aggregator/latest/workflow-aggregator.hpi
+```bash
+kubectl scale deployment/jenkins -n devops --replicas=1
+kubectl rollout status deployment/jenkins -n devops --timeout=240s
 ```
 
-### 3. 构建失败
-```bash
-# 查看构建日志
-kubectl exec -it $POD_NAME -- cat /var/jenkins_home/jobs/<job-name>/builds/<build-number>/log
+## 常见问题
 
-# 检查构建环境
-kubectl exec -it $POD_NAME -- env | grep -i java
+### Pod 是 `CrashLoopBackOff`
+
+先看 Jenkins 容器日志：
+
+```bash
+kubectl logs -n devops -l app=jenkins -c jenkins --tail=120
 ```
 
-### 4. 内存不足
-```bash
-# 查看内存使用
-kubectl top pods -l app=jenkins
+如果看到类似：
 
-# 增加内存限制
-kubectl edit deployment jenkins
-# 修改 resources.limits.memory
+```text
+missing rw permissions on JENKINS_HOME
+Permission denied
 ```
 
-# 安全配置
+说明 hostPath 目录权限不对。当前 YAML 已经通过 `initContainer/fix-jenkins-volume-permissions` 自动执行：
 
-## 修改默认密码
 ```bash
-# 编辑 Secret
-kubectl edit secret jenkins-secret
-
-# 修改密码后重启
-kubectl rollout restart deployment jenkins
+chown -R 1000:1000 /var/jenkins_home /var/log/jenkins
 ```
 
-## 配置 HTTPS
-```bash
-# 创建 TLS Secret
-kubectl create secret tls jenkins-tls --cert=server.crt --key=server.key
+如果仍失败，检查 Docker Desktop 是否允许访问对应宿主机磁盘。
 
-# 修改 Service 配置添加 HTTPS 端口
+### `/var/cache/jenkins/war` 权限错误
+
+本配置已经把 Jenkins webroot 改到：
+
+```text
+/var/jenkins_home/war
 ```
 
-# 清理资源
+不要再改回 `/var/cache/jenkins/war`，否则非 root 用户可能无法写入。
+
+### 登录失败
+
+确认初始化脚本执行过：
 
 ```bash
-# 删除所有 Jenkins 资源
-kubectl delete -f jenkins-k8s.yaml
+kubectl logs -n devops -l app=jenkins -c jenkins --tail=200 | grep init.groovy
+```
 
-# 清理持久化数据（谨慎操作）
-sudo rm -rf /mnt/host/d/dockerstore/jenkins/
+如果 Jenkins home 中已经存在旧数据，初始化脚本可能不会覆盖旧账号。可以在 Jenkins UI 中修改密码，或清理持久化数据后重新部署。
+
+### 页面访问不到
+
+检查 Service 和 Pod：
+
+```bash
+kubectl get svc -n devops jenkins-service-nodeport
+kubectl get pods -n devops -l app=jenkins
+```
+
+本地 Docker Desktop 访问地址为：
+
+```text
+http://localhost:30090/jenkins/login
+```
+
+### Kaniko 推送镜像失败
+
+检查 `/kaniko/.docker/config.json` 是否包含目标仓库认证：
+
+```bash
+POD_NAME=$(kubectl get pod -n devops -l app=jenkins -o jsonpath='{.items[0].metadata.name}')
+kubectl exec -n devops -it $POD_NAME -c kaniko -- cat /kaniko/.docker/config.json
+```
+
+如果是空的 `auths`，请按“Kaniko 镜像仓库认证”章节重新创建 Secret。
+
+## 清理资源
+
+删除 Jenkins 资源：
+
+```bash
+kubectl delete -f jenkins-k8s-kaniko.yaml
+```
+
+因为 PV 的回收策略是 `Retain`，删除 YAML 后宿主机数据目录仍会保留。如需彻底清理，请手动删除宿主机目录：
+
+```text
+E:\dockerstore\jenkins\data
+E:\dockerstore\jenkins\logs
+E:\dockerstore\jenkins\maven-repo
 ```

@@ -293,20 +293,20 @@ spec:
               cpu: "2000m"
           livenessProbe:
             httpGet:
-              path: /jenkins/login
+              path: /jenkins/health
               port: 8080
-            initialDelaySeconds: 120
-            periodSeconds: 10
+            initialDelaySeconds: 300
+            periodSeconds: 20
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 6
           readinessProbe:
             httpGet:
               path: /jenkins/login
               port: 8080
-            initialDelaySeconds: 60
+            initialDelaySeconds: 180
             periodSeconds: 10
             timeoutSeconds: 5
-            failureThreshold: 3
+            failureThreshold: 12
 
         - name: maven
           image: maven:3.9.9-eclipse-temurin-21
@@ -326,7 +326,10 @@ spec:
         - name: kubectl
           image: bitnami/kubectl:latest
           imagePullPolicy: IfNotPresent
-          command: ["sleep", "infinity"]
+          workingDir: /home/jenkins/agent
+          command: ["cat"]
+          stdin: true
+          tty: true
           resources:
             requests:
               memory: "512Mi"
@@ -439,6 +442,8 @@ rules:
     resources:
       - deployments
     verbs:
+      - create
+      - delete
       - get
       - list
       - watch
@@ -466,5 +471,3 @@ subjects:
   - kind: ServiceAccount
     name: jenkins
     namespace: devops
-
-
