@@ -27,4 +27,13 @@ public class UserController {
         return map;
     }
 
+    @GetMapping("/info")
+    public Map<String, Object> info() {
+        Map<String, Object> map = new HashMap<>();
+        map.put("message", "Spring Boot info");
+        map.put("version", version);
+        map.put("hostname", hostname);
+        return map;
+    }
+
 }
