@@ -9,7 +9,7 @@ metadata:
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: my-springboot-app-deployment
+  name: my-springboot-app
   namespace: web-app
 spec:
   replicas: 2
@@ -23,7 +23,7 @@ spec:
     spec:
       containers:
         - name: my-springboot-app
-          image: host.docker.internal:5001/my-springboot-app:1.0.0
+          image: host.docker.internal:5001/my-springboot-app:v1.0.0
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
@@ -51,7 +51,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: my-springboot-app-service
+  name: my-springboot-app
   namespace: web-app
 spec:
   type: ClusterIP
@@ -63,39 +63,61 @@ spec:
       targetPort: 8080
 
 ---
-# Gateway
-apiVersion: gateway.networking.k8s.io/v1
-kind: Gateway
+apiVersion: networking.k8s.io/v1
+kind: Ingress
 metadata:
-  name: gateway-demo
+  name: my-springboot-app
   namespace: web-app
+  annotations:
+    nginx.ingress.kubernetes.io/use-regex: "true"
+    nginx.ingress.kubernetes.io/rewrite-target: /$2
 spec:
-  gatewayClassName: nginx
-  listeners:
-    - name: http
-      port: 81
-      protocol: HTTP
-      allowedRoutes:
-        namespaces:
-          from: Same
-
----
-# HTTPRoute
-apiVersion: gateway.networking.k8s.io/v1
-kind: HTTPRoute
-metadata:
-  name: spring-restful-service-route
-  namespace: web-app
-spec:
-  parentRefs:
-    - name: gateway-demo
-  # hostnames:
-  #   - api.localtest.me
   rules:
-    - matches:
-        - path:
-            type: PathPrefix
-            value: /
-      backendRefs:
-        - name: my-springboot-app-service
-          port: 81
+    - host: app.k8s
+      http:
+        paths:
+          - path: /springboot(/|$)(.*)
+            pathType: ImplementationSpecific
+            backend:
+              service:
+                name: my-springboot-app
+                port:
+                  number: 81
+
+# ---
+# # Gateway
+# apiVersion: gateway.networking.k8s.io/v1
+# kind: Gateway
+# metadata:
+#   name: springboot-gateway
+#   namespace: web-app
+# spec:
+#   gatewayClassName: nginx
+#   listeners:
+#     - name: http
+#       port: 81
+#       protocol: HTTP
+#       allowedRoutes:
+#         namespaces:
+#           from: Same
+
+# ---
+# # HTTPRoute
+# apiVersion: gateway.networking.k8s.io/v1
+# kind: HTTPRoute
+# metadata:
+#   name: spring-restful-service-route
+#   namespace: web-app
+# spec:
+#   parentRefs:
+#     - name: springboot-gateway
+#   # hostnames:
+#   #   - api.localtest.me
+#   rules:
+#     - matches:
+#         - path:
+#             type: PathPrefix
+#             value: /
+#       backendRefs:
+#         - name: my-springboot-app
+#           port: 81
