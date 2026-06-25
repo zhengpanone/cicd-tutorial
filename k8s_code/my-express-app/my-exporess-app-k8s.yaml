@@ -3,7 +3,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: my-express-app
-  namespace: test
+  namespace: web-app
 spec:
   replicas: 1
   selector:
@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
         - name: my-express-app
-          image: localhost:32000/my-express-app:v1
+          image: host.docker.internal:5001/my-express-app:v1.0.0
           ports:
             - containerPort: 3000
 ---
@@ -24,7 +24,7 @@ apiVersion: v1
 kind: Service
 metadata:
   name: my-express-app
-  namespace: test
+  namespace: web-app
 spec:
   selector:
     app: my-express-app
@@ -39,6 +39,7 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: my-express-app
+  namespace: web-app
 spec:
   rules:
     - host: express.local
@@ -50,4 +51,4 @@ spec:
               service:
                 name: my-express-app
                 port:
-                  number: 8080
+                  number: 3000
