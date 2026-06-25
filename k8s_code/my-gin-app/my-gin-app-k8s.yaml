@@ -74,6 +74,13 @@ spec:
     - host: app.k8s
       http:
         paths:
+          - path: /gin
+            pathType: Prefix
+            backend:
+              service:
+                name: my-gin-app
+                port:
+                  number: 82
           - path: /gin(/|$)(.*)
             pathType: ImplementationSpecific
             backend:

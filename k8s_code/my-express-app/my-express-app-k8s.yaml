@@ -68,6 +68,13 @@ spec:
     - host: app.k8s
       http:
         paths:
+          - path: /express
+            pathType: Prefix
+            backend:
+              service:
+                name: my-express-app
+                port:
+                  number: 83
           - path: /express(/|$)(.*)
             pathType: ImplementationSpecific
             backend:

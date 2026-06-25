@@ -77,6 +77,13 @@ spec:
     - host: app.k8s
       http:
         paths:
+          - path: /springboot
+            pathType: Prefix
+            backend:
+              service:
+                name: my-springboot-app
+                port:
+                  number: 81
           - path: /springboot(/|$)(.*)
             pathType: ImplementationSpecific
             backend:
