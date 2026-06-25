@@ -61,3 +61,26 @@ spec:
       protocol: TCP
 
 
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: my-gin-app
+  namespace: web-app
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: gin.k8s
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: my-gin-app
+                port:
+                  number: 8080
