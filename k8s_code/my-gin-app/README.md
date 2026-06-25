@@ -1,4 +1,4 @@
-# k8s 部署go项目
+# k8s 部署 go 项目
 
 ## 初始化项目
 
@@ -19,10 +19,9 @@ docker push localhost:32000/my-gin-app:v1.3
 ## 部署
 
 ```sh
-kubectl create namespace test # 创建命名空间
+kubectl create namespace web-app # 创建命名空间
 kubectl apply -f my-gin-app-k8s.yaml
-kubectl get svc,deploy,pod -n test
+kubectl get svc,deploy,pod -n web-app
 kubectl get pods -w
-kubectl -n test port-forward svc/my-gin-app 8081:8080
-# curl http://localhost:8081/
+# curl http://app.k8s:18080/gin/
 ```

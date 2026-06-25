@@ -50,75 +50,14 @@ metadata:
   labels:
     app: my-gin-app
 spec:
-  type: ClusterIP
+  type: NodePort
   selector:
     app: my-gin-app
   ports:
     - name: http
-      port: 82
+      port: 8080
       targetPort: 8080
+      nodePort: 30003
       protocol: TCP
 
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: my-gin-app
-  namespace: web-app
-  annotations:
-    nginx.ingress.kubernetes.io/use-regex: "true"
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: app.k8s
-      http:
-        paths:
-          - path: /gin
-            pathType: Prefix
-            backend:
-              service:
-                name: my-gin-app
-                port:
-                  number: 82
-          - path: /gin(/|$)(.*)
-            pathType: ImplementationSpecific
-            backend:
-              service:
-                name: my-gin-app
-                port:
-                  number: 82
 
-# ---
-# apiVersion: gateway.networking.k8s.io/v1
-# kind: Gateway
-# metadata:
-#   name: gin-gateway
-#   namespace: web-app
-# spec:
-#   gatewayClassName: nginx
-#   listeners:
-#     - name: http
-#       port: 82
-#       protocol: HTTP
-#       allowedRoutes:
-#         namespaces:
-#           from: Same
-
-# ---
-# apiVersion: gateway.networking.k8s.io/v1
-# kind: HTTPRoute
-# metadata:
-#   name: gin-route
-#   namespace: web-app
-# spec:
-#   parentRefs:
-#     - name: gin-gateway
-#   rules:
-#     - matches:
-#         - path:
-#             type: PathPrefix
-#             value: /
-#       backendRefs:
-#         - name: my-gin-app
-#           port: 82
