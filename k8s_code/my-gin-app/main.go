@@ -18,7 +18,7 @@ func main() {
 		hostname, _ := os.Hostname()
 		c.String(200, "Version: %s, Hostname: %s", *version, hostname)
 	})
-	router.GET("/*path", func(c *gin.Context) {
+	router.GET("/test", func(c *gin.Context) {
 		flag.Parse()
 		hostname, _ := os.Hostname()
 		c.JSON(http.StatusOK, gin.H{
