@@ -10,8 +10,7 @@ data:
     process.roles=broker,controller
     controller.quorum.voters=0@kafka-0.kafka-headless.default.svc.cluster.local:9093,1@kafka-1.kafka-headless.default.svc.cluster.local:9093,2@kafka-2.kafka-headless.default.svc.cluster.local:9093
     listeners=CONTROLLER://:9093,PLAINTEXT://:9092,EXTERNAL://:9094
-    # ✅ EXTERNAL 改为宿主机真实IP，外部客户端靠这个地址回连
-    advertised.listeners=PLAINTEXT://$(POD_NAME).kafka-headless.default.svc.cluster.local:9092,EXTERNAL://192.168.1.100:30094
+    advertised.listeners=PLAINTEXT://__POD_NAME__.kafka-headless.default.svc.cluster.local:9092,EXTERNAL://__NODE_IP__:30094
     listener.security.protocol.map=CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,EXTERNAL:PLAINTEXT
     inter.broker.listener.name=PLAINTEXT
     controller.listener.names=CONTROLLER
@@ -107,18 +106,21 @@ spec:
       terminationGracePeriodSeconds: 60
       initContainers:
       - name: init-kafka
-        image: confluentinc/cp-kafka:7.4.0
+        image: busybox:1.36
         command:
         - sh
         - -c
         - |
           BROKER_INDEX=${HOSTNAME##*-}
-          mkdir -p /opt/dockerstore/kafka/broker-${BROKER_INDEX}/logs
-          mkdir -p /opt/dockerstore/kafka/broker-${BROKER_INDEX}/meta
+          mkdir -p /run/desktop/mnt/host/e/dockerstore/kafka/broker-${BROKER_INDEX}/logs
+          mkdir -p /run/desktop/mnt/host/e/dockerstore/kafka/broker-${BROKER_INDEX}/meta
+          chown -R 1000:1000 /run/desktop/mnt/host/e/dockerstore/kafka
           echo "Created dirs for broker-${BROKER_INDEX}"
+        securityContext:
+          runAsUser: 0
         volumeMounts:
         - name: kafka-data
-          mountPath: /opt/dockerstore/kafka
+          mountPath: /run/desktop/mnt/host/e/dockerstore/kafka
       containers:
       - name: kafka
         image: confluentinc/cp-kafka:7.4.0
@@ -132,6 +134,10 @@ spec:
           valueFrom:
             fieldRef:
               fieldPath: metadata.name
+        - name: NODE_IP
+          valueFrom:
+            fieldRef:
+              fieldPath: status.hostIP
         # ✅ 不再需要 EXTERNAL_IP，改为固定宿主机IP
         command:
         - sh
@@ -140,10 +146,11 @@ spec:
           BROKER_INDEX=${HOSTNAME##*-}
           cp /etc/kafka/kraft.properties /tmp/kraft.properties
           sed -i "s|\${BROKER_ID}|${BROKER_INDEX}|g" /tmp/kraft.properties
-          sed -i "s|/var/lib/kafka/data|/opt/dockerstore/kafka/broker-${BROKER_INDEX}|g" /tmp/kraft.properties
-          sed -i "s|\$(POD_NAME)|${HOSTNAME}|g" /tmp/kraft.properties
+          sed -i "s|/var/lib/kafka/data|/run/desktop/mnt/host/e/dockerstore/kafka/broker-${BROKER_INDEX}|g" /tmp/kraft.properties
+          sed -i "s|__POD_NAME__|${HOSTNAME}|g" /tmp/kraft.properties
+          sed -i "s|__NODE_IP__|${NODE_IP}|g" /tmp/kraft.properties
 
-          if [ ! -f /opt/dockerstore/kafka/broker-${BROKER_INDEX}/meta/meta.properties ]; then
+          if [ ! -f /run/desktop/mnt/host/e/dockerstore/kafka/broker-${BROKER_INDEX}/meta/meta.properties ]; then
             echo "Initializing KRaft metadata for broker-${BROKER_INDEX}..."
             kafka-storage format --ignore-formatted -t $CLUSTER_ID -c /tmp/kraft.properties
           fi
@@ -160,7 +167,7 @@ spec:
           mountPath: /etc/kafka/kraft.properties
           subPath: kraft.properties
         - name: kafka-data
-          mountPath: /opt/dockerstore/kafka
+          mountPath: /run/desktop/mnt/host/e/dockerstore/kafka
         resources:
           requests:
             memory: "2Gi"
@@ -187,5 +194,104 @@ spec:
             path: kraft.properties
       - name: kafka-data
         hostPath:
-          path: /opt/dockerstore/kafka
+          path: /run/desktop/mnt/host/e/dockerstore/kafka
           type: DirectoryOrCreate
+
+---
+# =============================================================================
+# Kafka UI Dashboard（provectuslabs/kafka-ui）
+# 域名: kafka-ui.k8s
+# =============================================================================
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kafka-ui
+  namespace: default
+  labels:
+    app: kafka-ui
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kafka-ui
+  template:
+    metadata:
+      labels:
+        app: kafka-ui
+    spec:
+      containers:
+        - name: kafka-ui
+          image: provectuslabs/kafka-ui:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+              name: http
+          env:
+            - name: KAFKA_CLUSTERS_0_NAME
+              value: local
+            - name: KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS
+              value: kafka-bootstrap:9092
+          resources:
+            requests:
+              cpu: 200m
+              memory: 256Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 30
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /actuator/health
+              port: 8080
+            initialDelaySeconds: 60
+            periodSeconds: 30
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kafka-ui
+  namespace: default
+  labels:
+    app: kafka-ui
+spec:
+  selector:
+    app: kafka-ui
+  type: ClusterIP
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: http
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: kafka-ui
+  namespace: default
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - kafka-ui.k8s
+      secretName: default-tls
+  rules:
+    - host: kafka-ui.k8s
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: kafka-ui
+                port:
+                  number: 8080

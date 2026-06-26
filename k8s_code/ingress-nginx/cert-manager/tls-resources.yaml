@@ -103,6 +103,8 @@ spec:
     - emqx.k8s
     - attu.k8s
     - kafka-ui.k8s
+    - grafana.k8s
+    - loki.k8s
   issuerRef:
     name: k8s-ca-issuer
     kind: ClusterIssuer
@@ -142,6 +144,25 @@ spec:
   commonName: harbor.k8s
   dnsNames:
     - harbor.k8s
+  issuerRef:
+    name: k8s-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# 9. kubernetes-dashboard 命名空间证书
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: dashboard-tls
+  namespace: kubernetes-dashboard
+spec:
+  secretName: dashboard-tls
+  duration: 8760h
+  renewBefore: 720h
+  commonName: dashboard.k8s
+  dnsNames:
+    - dashboard.k8s
   issuerRef:
     name: k8s-ca-issuer
     kind: ClusterIssuer
