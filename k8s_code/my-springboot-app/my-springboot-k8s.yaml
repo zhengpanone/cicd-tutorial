@@ -1,4 +1,4 @@
-﻿---
+---
 # Namespace
 apiVersion: v1
 kind: Namespace
@@ -68,4 +68,3 @@ spec:
       targetPort: 8080
       nodePort: 30004
       protocol: TCP
-

@@ -1,4 +1,51 @@
-﻿# my-springboot-app
+# my-springboot-app
+
+Spring Boot 示例应用，提供基础 HTTP 接口和 EMQX MQTT 测试接口。
+
+## EMQX 配置
+
+默认配置在 `src/main/resources/application.yml`：
+
+```yaml
+emqx:
+  broker-url: ${EMQX_BROKER_URL:tcp://localhost:1883}
+  client-id-prefix: ${EMQX_CLIENT_ID_PREFIX:my-springboot-app}
+```
+
+在 Kubernetes 中，`my-springboot-k8s.yaml` 已配置为访问集群内 EMQX：
+
+```yaml
+EMQX_BROKER_URL=tcp://emqx.emqx.svc.cluster.local:1883
+```
+
+本机调试时，如果 EMQX 通过 `k8s_code/emqx/emqx-k8s.yaml` 启动，请使用 NodePort：
+
+```bash
+$env:EMQX_BROKER_URL="tcp://localhost:31883"
+mvn spring-boot:run
+```
+
+## EMQX 测试接口
+
+查看当前 MQTT 配置：
+
+```bash
+curl http://localhost:8080/emqx/config
+```
+
+发布一条 MQTT 消息：
+
+```bash
+curl -X POST "http://localhost:8080/emqx/publish?topic=cicd-tutorial/emqx/test&payload=hello-emqx&qos=1"
+```
+
+订阅并发布同一条消息，验证 EMQX 往返链路：
+
+```bash
+curl -X POST "http://localhost:8080/emqx/roundtrip?topic=cicd-tutorial/emqx/test&payload=hello-emqx&qos=1&timeoutSeconds=5"
+```
+
+返回 `success: true` 表示 Spring Boot 已经成功连接 EMQX，并完成发布/订阅验证。
 
 ## 构建镜像
 
@@ -11,6 +58,7 @@ docker build -t my-springboot-app:1.0.0 .
 ```bash
 docker run -d \
   -p 18080:8080 \
+  -e EMQX_BROKER_URL=tcp://host.docker.internal:31883 \
   --name my-springboot-app \
   my-springboot-app:1.0.0
 ```
@@ -22,100 +70,45 @@ docker tag my-springboot-app:1.0.0 host.docker.internal:5001/my-springboot-app:1
 docker push host.docker.internal:5001/my-springboot-app:1.0.0
 ```
 
-## 清理本地镜像
-
-```bash
-docker rmi my-springboot-app:1.0.0
-docker rmi host.docker.internal:5001/my-springboot-app:1.0.0
-```
-
-## 安装 Gateway API
-
-`my-springboot-k8s.yaml` 使用了：
-
-```text
-gateway.networking.k8s.io/v1
-```
-
-首次部署前需要先安装 Gateway API CRD，否则会出现：
-
-```text
-no matches for kind "Gateway" in version "gateway.networking.k8s.io/v1"
-no matches for kind "HTTPRoute" in version "gateway.networking.k8s.io/v1"
-```
-
-安装 Gateway API 标准 CRD：
-
-```bash
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/gateway-api/releases/download/v1.5.0/standard-install.yaml
-```
-
-验证 CRD：
-
-```bash
-kubectl get crd gateways.gateway.networking.k8s.io httproutes.gateway.networking.k8s.io
-```
-
-## 安装 Gateway Controller
-
-只安装 Gateway API CRD 只能让 Kubernetes 识别 `Gateway` 和 `HTTPRoute` 资源，还需要安装 Gateway Controller 才能真正处理流量。
-
-本清单使用：
-
-```yaml
-gatewayClassName: nginx
-```
-
-因此可以安装 NGINX Gateway Fabric：
-
-```bash
-kubectl apply --server-side -f https://raw.githubusercontent.com/nginx/nginx-gateway-fabric/v2.6.5/deploy/crds.yaml
-kubectl apply -f https://raw.githubusercontent.com/nginx/nginx-gateway-fabric/v2.6.5/deploy/nodeport/deploy.yaml
-```
-
-验证 Gateway Controller：
-
-```bash
-kubectl get gatewayclass
-kubectl get pods -n nginx-gateway
-kubectl get svc -n nginx-gateway
-```
-
-应能看到 `GatewayClass/nginx`。
-
 ## 部署应用
+
+先启动 EMQX：
+
+```bash
+kubectl apply -f ../emqx/emqx-k8s.yaml
+kubectl rollout status deployment/emqx -n emqx --timeout=300s
+```
+
+部署 Spring Boot：
 
 ```bash
 kubectl apply -f my-springboot-k8s.yaml
+kubectl rollout status deployment/my-springboot-app -n web-app --timeout=300s
 ```
 
 验证应用资源：
 
 ```bash
-kubectl get pods -n spring-app
-kubectl get svc -n spring-app
-kubectl get endpoints -n spring-app
-kubectl get gateway -n spring-app
-kubectl get httproute -n spring-app
+kubectl get pods -n web-app
+kubectl get svc -n web-app
+kubectl get endpoints -n web-app
 ```
 
-查看 Gateway 和 HTTPRoute 状态：
+通过 NodePort 访问 Spring Boot：
 
-```bash
-kubectl describe gateway -n spring-app gateway-demo
-kubectl describe httproute -n spring-app spring-restful-service-route
+```text
+http://localhost:30004
 ```
 
-重点确认 `Accepted` 和 `Programmed` 状态为 `True`。
+如果需要从本机访问 EMQX Dashboard：
 
-## 排查命令
+```text
+http://localhost:30084
+```
 
-如果 Gateway 或 HTTPRoute 没有生效，先看 Gateway API 资源和 Controller：
+## 清理本地镜像
 
 ```bash
-kubectl get gatewayclass
-kubectl get gateway -n spring-app
-kubectl get httproute -n spring-app
-kubectl get pods -n nginx-gateway
-kubectl logs -n nginx-gateway -l app.kubernetes.io/name=nginx-gateway-fabric --tail=100
+docker rmi my-springboot-app:1.0.0
+docker rmi host.docker.internal:5001/my-springboot-app:1.0.0
 ```

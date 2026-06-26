@@ -10,9 +10,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
 
 import org.eclipse.paho.client.mqttv3.IMqttClient;
+import org.eclipse.paho.client.mqttv3.IMqttDeliveryToken;
 import org.eclipse.paho.client.mqttv3.MqttCallback;
 import org.eclipse.paho.client.mqttv3.MqttClient;
 import org.eclipse.paho.client.mqttv3.MqttConnectOptions;
+import org.eclipse.paho.client.mqttv3.MqttException;
 import org.eclipse.paho.client.mqttv3.MqttMessage;
 import org.eclipse.paho.client.mqttv3.persist.MemoryPersistence;
 import org.springframework.beans.factory.annotation.Value;
@@ -45,12 +47,14 @@ public class EmqxTestController {
             @RequestParam(defaultValue = "cicd-tutorial/emqx/test") String topic,
             @RequestParam(defaultValue = "hello emqx") String payload,
             @RequestParam(defaultValue = "1") int qos) throws Exception {
-        try (IMqttClient client = newClient("publisher")) {
+        IMqttClient client = newClient("publisher");
+        try {
             client.connect(connectOptions());
             MqttMessage message = new MqttMessage(payload.getBytes(StandardCharsets.UTF_8));
             message.setQos(qos);
             client.publish(topic, message);
-            client.disconnect();
+        } finally {
+            closeClient(client);
         }
 
         Map<String, Object> result = new LinkedHashMap<>();
@@ -71,12 +75,13 @@ public class EmqxTestController {
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<String> receivedPayload = new AtomicReference<>();
 
-        try (IMqttClient subscriber = newClient("subscriber");
-                IMqttClient publisher = newClient("publisher")) {
+        IMqttClient subscriber = newClient("subscriber");
+        IMqttClient publisher = newClient("publisher");
+        try {
             subscriber.setCallback(new MqttCallback() {
                 @Override
                 public void connectionLost(Throwable cause) {
-                    // The test request reports success only when a message is received before timeout.
+                    // The response reports success only when a message is received before timeout.
                 }
 
                 @Override
@@ -86,7 +91,7 @@ public class EmqxTestController {
                 }
 
                 @Override
-                public void deliveryComplete(org.eclipse.paho.client.mqttv3.IMqttDeliveryToken token) {
+                public void deliveryComplete(IMqttDeliveryToken token) {
                     // Subscriber does not publish messages.
                 }
             });
@@ -100,8 +105,6 @@ public class EmqxTestController {
             publisher.publish(topic, message);
 
             boolean received = latch.await(timeoutSeconds, TimeUnit.SECONDS);
-            publisher.disconnect();
-            subscriber.disconnect();
 
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("success", received);
@@ -113,10 +116,13 @@ public class EmqxTestController {
             result.put("brokerUrl", brokerUrl);
             result.put("testedAt", Instant.now().toString());
             return result;
+        } finally {
+            closeClient(publisher);
+            closeClient(subscriber);
         }
     }
 
-    private IMqttClient newClient(String role) throws Exception {
+    private IMqttClient newClient(String role) throws MqttException {
         String clientId = "%s-%s-%s".formatted(clientIdPrefix, role, UUID.randomUUID());
         return new MqttClient(brokerUrl, clientId, new MemoryPersistence());
     }
@@ -127,5 +133,18 @@ public class EmqxTestController {
         options.setCleanSession(true);
         options.setConnectionTimeout(5);
         return options;
+    }
+
+    private void closeClient(IMqttClient client) throws MqttException {
+        if (client == null) {
+            return;
+        }
+        try {
+            if (client.isConnected()) {
+                client.disconnect();
+            }
+        } finally {
+            client.close();
+        }
     }
 }

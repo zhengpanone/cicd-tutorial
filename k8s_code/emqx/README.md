@@ -1,41 +1,64 @@
-#!/bin/bash
-# deploy-emqx.sh
+# EMQX Kubernetes 部署
 
-# 1. 创建命名空间
-kubectl apply -f 0-namespace.yaml
+`emqx-k8s.yaml` 是一个适合本地 Docker Desktop / 开发环境的 EMQX 单节点清单，包含：
 
-# 2. 创建 PV
-kubectl apply -f 1-pv.yaml
+- `Namespace`: `emqx`
+- `PersistentVolume`: `/run/desktop/mnt/host/e/dockerstore/emqx/data`
+- `PersistentVolumeClaim`: `emqx-data-pvc`
+- `Secret`: Dashboard 默认账号
+- `Deployment`: `emqx/emqx:5.3.0`，单副本
+- `Service`: NodePort 暴露 MQTT、WebSocket 和 Dashboard
+- `Headless Service`: 集群内 DNS 访问
 
-# 3. 创建 Secret
-kubectl create secret generic emqx-secret \
-  -n emqx \
-  --from-literal=cookie=emqx_cluster_cookie_$(openssl rand -hex 8) \
-  --from-literal=api-key=$(openssl rand -hex 16)
+## 启动
 
-# 4. 创建 PVC
-kubectl apply -f 2-pvc.yaml
+```bash
+kubectl apply -f emqx-k8s.yaml
+kubectl rollout status deployment/emqx -n emqx --timeout=300s
+```
 
-# 5. 创建 ConfigMap
-kubectl apply -f 3-configmap.yaml
+## 查看资源
 
-# 6. 创建 Deployment
-kubectl apply -f 4-deployment.yaml
+```bash
+kubectl get all -n emqx
+kubectl get pv emqx-data-pv
+kubectl get pvc -n emqx emqx-data-pvc
+```
 
-# 7. 创建 Service
-kubectl apply -f 5-service.yaml
+## 访问地址
 
-# 8. 验证部署
-echo "等待 EMQX Pod 启动..."
-kubectl wait --namespace=emqx --for=condition=ready pod --selector=app=emqx --timeout=300s
+本机访问：
 
-echo "EMQX 集群状态:"
-kubectl exec -n emqx deployment/emqx -- emqx ctl cluster status
+```text
+MQTT TCP: tcp://localhost:31883
+MQTT WebSocket: ws://localhost:30083
+Dashboard: http://localhost:30084
+```
 
-echo ""
-echo "访问信息:"
-echo "Dashboard: http://$(kubectl get node -o jsonpath='{.items[0].status.addresses[0].address}'):38084"
-echo "MQTT TCP: $(kubectl get node -o jsonpath='{.items[0].status.addresses[0].address}'):31883"
-echo "MQTT WebSocket: ws://$(kubectl get node -o jsonpath='{.items[0].status.addresses[0].address}'):38083"
-echo ""
-echo "默认账号: admin / public"
+集群内访问：
+
+```text
+MQTT TCP: tcp://emqx.emqx.svc.cluster.local:1883
+```
+
+Dashboard 默认账号：
+
+```text
+admin / public
+```
+
+## Spring Boot 测试
+
+`my-springboot-app` 已经配置：
+
+```yaml
+EMQX_BROKER_URL=tcp://emqx.emqx.svc.cluster.local:1883
+```
+
+如果在本机直接运行 Spring Boot，请改用 NodePort：
+
+```bash
+EMQX_BROKER_URL=tcp://localhost:31883 mvn spring-boot:run
+```
+
+测试接口见 `k8s_code/my-springboot-app/README.md`。
