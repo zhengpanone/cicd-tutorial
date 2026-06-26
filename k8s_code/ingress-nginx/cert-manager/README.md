@@ -39,8 +39,9 @@ selfsigned-cluster-issuer (ClusterIssuer, 自签名根)
             └── k8s-ca-issuer (ClusterIssuer, CA 签发器)
                     ├── web-app-tls  (web-app)      → gin/express/springboot.k8s
                     ├── devops-tls   (devops)       → jenkins.k8s
-                    ├── default-tls  (default)      → nacos/consul/rustfs/prometheus/jaeger/sentinel/minio/rocketmq/redisinsight/emqx/attu.k8s
-                    └── efk-tls      (elk)           → kibana.k8s
+                    ├── default-tls  (default)      → nacos/consul/rustfs/prometheus/jaeger/sentinel/minio/rocketmq/redisinsight/emqx/attu/kafka-ui.k8s
+                    ├── efk-tls      (elk)           → kibana/elasticsearch.k8s
+                    └── dashboard-tls (kubernetes-dashboard) → dashboard.k8s
 ```
 
 所有 Issuer 均为 ClusterIssuer（集群级），Certificate 和 Secret 在各目标命名空间内。

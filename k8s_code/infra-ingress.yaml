@@ -388,6 +388,38 @@ spec:
                 port:
                   number: 9200
 
+# ─── harbor 命名空间 ────────────────────────────────────────────────────────────
+
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: harbor
+  namespace: harbor
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: "0"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - harbor.k8s
+      secretName: harbor-tls
+  rules:
+    - host: harbor.k8s
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: harbor-nginx
+                port:
+                  number: 8080
+
 # ─── kubernetes-dashboard 命名空间 ─────────────────────────────────────────────
 
 ---

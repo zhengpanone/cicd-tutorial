@@ -102,6 +102,7 @@ spec:
     - redisinsight.k8s
     - emqx.k8s
     - attu.k8s
+    - kafka-ui.k8s
   issuerRef:
     name: k8s-ca-issuer
     kind: ClusterIssuer
@@ -128,19 +129,19 @@ spec:
     group: cert-manager.io
 
 ---
-# 8. kubernetes-dashboard 命名空间证书
+# 8. harbor 命名空间证书
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: dashboard-tls
-  namespace: kubernetes-dashboard
+  name: harbor-tls
+  namespace: harbor
 spec:
-  secretName: dashboard-tls
-  duration: 8760h
-  renewBefore: 720h
-  commonName: dashboard.k8s
+  secretName: harbor-tls
+  duration: 8760h # 1 年
+  renewBefore: 720h # 到期前 30 天自动续签
+  commonName: harbor.k8s
   dnsNames:
-    - dashboard.k8s
+    - harbor.k8s
   issuerRef:
     name: k8s-ca-issuer
     kind: ClusterIssuer
