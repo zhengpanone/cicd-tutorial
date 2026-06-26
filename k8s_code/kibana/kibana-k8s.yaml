@@ -1,0 +1,49 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kibana
+  namespace: dinginx-efk
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+        k8s-app: kibana
+  template:
+      metadata:
+         labels:
+            k8s-app: kibana
+      spec:
+        containers:
+        - name: kibana
+          image: harbor.dinginx.org/dinginx-elasticstack/kibana:7.17.5
+          resources:
+              limits:
+                cpu: 2
+                memory: 2Gi
+              requests:
+                cpu: 0.5  
+                memory: 500Mi
+          env:
+              - name: ELASTICSEARCH_HOSTS
+                value: http://elasticsearch:9200
+              - name: I18N_LOCALE
+                value: zh-CN
+          ports:
+          - containerPort: 5601
+              name: ui
+              protocol: TCP
+---
+apiVersion: v1
+kind: Service
+metadata:
+   name: dinginx-kibana
+   namespace: dinginx-efk
+spec:
+type: NodePort
+  ports:
+  - port: 5601
+    protocol: TCP
+    targetPort: ui
+    nodePort: 5601
+  selector:
+    k8s-app: kibana
