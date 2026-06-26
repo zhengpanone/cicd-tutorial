@@ -8,7 +8,7 @@ Dashboard 管理界面的集群管理员登录凭证。Dashboard 本身通过官
 |------|------|------|
 | ServiceAccount | dashboard-admin | 管理员身份 |
 | ClusterRoleBinding | dashboard-admin | 绑定 cluster-admin 角色 |
-| Secret | dashboard-admin-token | 持久 Token（不过期） |
+| Secret | dashboard-admin-token | 持久 Token（备用） |
 | Service (NodePort) | kubernetes-dashboard-nodeport | 外部访问，端口 30443 |
 
 ## 部署
@@ -24,8 +24,14 @@ kubectl apply -f dashboard-admin.yaml
 ## 获取登录 Token
 
 ```bash
+# 方式一：生成长期 Token（1 年有效，推荐）
+kubectl create token dashboard-admin -n kubernetes-dashboard --duration=8760h
+
+# 方式二：获取持久 Token（不过期，备用）
 kubectl get secret dashboard-admin-token -n kubernetes-dashboard -o jsonpath="{.data.token}" | base64 -d
 ```
+
+> **注意：** 如方式二登录失败，请使用方式一（Dashboard v2.7.0 + K8s 1.24+ 可能拒绝静态 Token）。
 
 ## 访问
 

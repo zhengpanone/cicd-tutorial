@@ -24,7 +24,7 @@ subjects:
     namespace: kubernetes-dashboard
 
 ---
-# 持久 Token（不会过期）
+# 持久 Token（不过期，备用方案）
 apiVersion: v1
 kind: Secret
 metadata:
