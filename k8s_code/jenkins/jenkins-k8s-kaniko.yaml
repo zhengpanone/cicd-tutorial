@@ -176,6 +176,22 @@ data:
 
     instance.save()
 
+  02-configure-security.groovy: |
+    import jenkins.model.Jenkins
+    import hudson.security.FullControlOnceLoggedInAuthorizationStrategy
+
+    def instance = Jenkins.get()
+
+    // Require login: logged-in users have full control, anonymous users read-only
+    def strategy = new FullControlOnceLoggedInAuthorizationStrategy()
+    strategy.setAllowAnonymousRead(false)
+    instance.setAuthorizationStrategy(strategy)
+
+    // Disable self-registration
+    instance.getSecurityRealm().setAllowsSignup(false)
+
+    instance.save()
+
 ---
 # Admin credential. Change this password before using outside a local tutorial.
 apiVersion: v1
