@@ -1,152 +1,149 @@
+# =============================================================================
+# Filebeat DaemonSet（elk 命名空间）
+# 收集集群内所有容器日志，输出到 Elasticsearch
+# 版本: 8.13.4，数据持久化到 e/dockerstore/filebeat/
+# =============================================================================
+
+# ConfigMap - filebeat 主配置
 apiVersion: v1
 kind: ConfigMap
 metadata:
-   name: filebeat-config
-   namespace: dinginx-efk
-   labels:
-      k8s-app: filebeat
+  name: filebeat-config
+  namespace: elk
+  labels:
+    app: filebeat
 data:
-   filebeat.yml: |-
-      filebeat.config:
-         inputs:
-            path:  ${path.config}/inputs.d/*.yml
-            reload.enabled:  false
-         modules:
-            path:  ${path.config}/modules.d/*.yml
-            reload.enabled:  false
-      output.elasticsearch:
-          # hosts: ['elasticsearch.dinginx-efk:9200']
-          # hosts: ['elasticsearch.dinginx-efk.svc.oldboyedu.com:9200']
-         hosts: ['elasticsearch:9200']
-          # 不建议修改索引，因为索引名称修改后，pod的数据也将收集不到啦!
-          # 除非你明确知道自己不收集Pod日志且需要自定义索引名称的情况下，可以打开下面的注释哟~
-          # index: 'dinginx-linux-elk-%{+yyyy.MM.dd}'
-       # 配置索引模板
-       # setup.ilm.enabled: false
-       # setup.template.name: "dinginx-linux-elk"
-       # setup.template.pattern: "dinginx-linux-elk*"
-       # setup.template.overwrite: true
-       # setup.template.settings:
-       #    index.number_of_shards: 3
-       #    index.number_of_replicas: 0
+  filebeat.yml: |-
+    filebeat.inputs:
+      - type: container
+        paths:
+          - /var/log/containers/*.log
+        processors:
+          - add_kubernetes_metadata:
+              host: ${NODE_NAME}
+              matchers:
+                - logs_path:
+                    logs_path: /var/log/containers/
+
+    output.elasticsearch:
+      hosts: ["elasticsearch.elk.svc.cluster.local:9200"]
+
+    processors:
+      - add_host_metadata: ~
+
 ---
-# 注意，官方在filebeat 7.2就已经废弃docker类型，建议后期更换为container.
+# RBAC - ServiceAccount
 apiVersion: v1
-kind: ConfigMap
-metadata:
-   name: filebeat-inputs
-   namespace: dinginx-efk
-   labels:
-      k8s-app: filebeat
-data:
-   kubernetes.yml: |-
-      -  type: docker
-         containers.ids:
-         -  "*"
-         processors:
-            - add_kubernetes_metadata:
-                  in_cluster:  true
----
-apiVersion: apps/v1  
-kind: DaemonSet
-metadata:
-   name: filebeat
-   namespace: dinginx-efk
-   labels:
-      k8s-app: filebeat
-spec:
-  selector:
-    matchLabels:
-        k8s-app: filebeat
-  template:
-    metadata:
-        labels:
-          k8s-app: filebeat
-    spec:
-        tolerations:
-        - key: node-role.kubernetes.io/master
-          effect: NoSchedule
-          operator: Exists
-        serviceAccountName: filebeat
-        terminationGracePeriodSeconds: 30
-        containers:
-        - name: filebeat
-          image: harbor.dinginx.org/dinginx-elasticstack/filebeat:7.10.2
-          args: [
-              "-c",  "/etc/filebeat.yml",
-              "-e",
-          ]
-          securityContext:
-              runAsUser: 0
-          resources:
-              limits:
-                memory: 200Mi
-              requests:
-                cpu: 100m
-                memory: 100Mi
-          volumeMounts:
-          - name: config
-              mountPath: /etc/filebeat.yml
-              readOnly:  true
-              subPath: filebeat.yml
-          - name: inputs
-              mountPath: /usr/share/filebeat/inputs.d
-              readOnly:  true
-          - name: data
-              mountPath: /usr/share/filebeat/data
-          - name: varlibdockercontainers
-              mountPath: /var/lib/docker/containers
-              readOnly:  true
-        volumes:
-        - name: config
-          configMap:
-              defaultMode: 0600
-              name: filebeat-config
-        - name: varlibdockercontainers
-          hostPath:
-              path: /var/lib/docker/containers
-        - name: inputs
-          configMap:
-              defaultMode: 0600
-              name: filebeat-inputs
-        - name: data
-          hostPath:
-              path: /var/lib/filebeat-data
-              type: DirectoryOrCreate
----
-apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: ServiceAccount
 metadata:
   name: filebeat
-subjects:
-- kind: ServiceAccount
-  name: filebeat
-  namespace: dinginx-efk
-roleRef:
-  kind: ClusterRole
-  name: filebeat
-  apiGroup: rbac.authorization.k8s.io
+  namespace: elk
+  labels:
+    app: filebeat
+
 ---
+# RBAC - ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
   name: filebeat
   labels:
-    k8s-app: filebeat
+    app: filebeat
 rules:
-- apiGroups: [""]
-  resources:
-  - namespaces
-  - pods
-  verbs:
-  - get
-  - watch
-  - list
+  - apiGroups: [""]
+    resources:
+      - namespaces
+      - pods
+      - nodes
+    verbs:
+      - get
+      - watch
+      - list
+
 ---
-apiVersion: v1
-kind: ServiceAccount
+# RBAC - ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
 metadata:
   name: filebeat
-  namespace: dinginx-efk
+subjects:
+  - kind: ServiceAccount
+    name: filebeat
+    namespace: elk
+roleRef:
+  kind: ClusterRole
+  name: filebeat
+  apiGroup: rbac.authorization.k8s.io
+
+---
+# DaemonSet
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: filebeat
+  namespace: elk
   labels:
-    k8s-app: filebeat
+    app: filebeat
+spec:
+  selector:
+    matchLabels:
+      app: filebeat
+  template:
+    metadata:
+      labels:
+        app: filebeat
+    spec:
+      serviceAccountName: filebeat
+      terminationGracePeriodSeconds: 30
+      tolerations:
+        - key: node-role.kubernetes.io/master
+          effect: NoSchedule
+          operator: Exists
+        - key: node-role.kubernetes.io/control-plane
+          effect: NoSchedule
+          operator: Exists
+      containers:
+        - name: filebeat
+          image: docker.elastic.co/beats/filebeat:8.13.4
+          args: ["-c", "/etc/filebeat/filebeat.yml", "-e"]
+          env:
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: spec.nodeName
+          securityContext:
+            runAsUser: 0
+          resources:
+            requests:
+              cpu: 100m
+              memory: 100Mi
+            limits:
+              memory: 200Mi
+          volumeMounts:
+            - name: config
+              mountPath: /etc/filebeat/filebeat.yml
+              readOnly: true
+              subPath: filebeat.yml
+            - name: data
+              mountPath: /usr/share/filebeat/data
+            - name: varlibdockercontainers
+              mountPath: /var/lib/docker/containers
+              readOnly: true
+            - name: varlog
+              mountPath: /var/log
+              readOnly: true
+      volumes:
+        - name: config
+          configMap:
+            defaultMode: 0600
+            name: filebeat-config
+        - name: varlibdockercontainers
+          hostPath:
+            path: /var/lib/docker/containers
+        - name: varlog
+          hostPath:
+            path: /var/log
+        - name: data
+          hostPath:
+            path: /run/desktop/mnt/host/e/dockerstore/filebeat/data
+            type: DirectoryOrCreate

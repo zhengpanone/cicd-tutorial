@@ -1,49 +1,77 @@
+# =============================================================================
+# Kibana 部署（elk 命名空间）
+# 版本与 Elasticsearch 保持一致: 8.13.4
+# =============================================================================
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: kibana
-  namespace: dinginx-efk
+  namespace: elk
+  labels:
+    app: kibana
 spec:
   replicas: 1
   selector:
     matchLabels:
-        k8s-app: kibana
+      app: kibana
   template:
-      metadata:
-         labels:
-            k8s-app: kibana
-      spec:
-        containers:
+    metadata:
+      labels:
+        app: kibana
+    spec:
+      containers:
         - name: kibana
-          image: harbor.dinginx.org/dinginx-elasticstack/kibana:7.17.5
-          resources:
-              limits:
-                cpu: 2
-                memory: 2Gi
-              requests:
-                cpu: 0.5  
-                memory: 500Mi
-          env:
-              - name: ELASTICSEARCH_HOSTS
-                value: http://elasticsearch:9200
-              - name: I18N_LOCALE
-                value: zh-CN
+          image: kibana:8.13.4
+          imagePullPolicy: IfNotPresent
           ports:
-          - containerPort: 5601
-              name: ui
+            - containerPort: 5601
+              name: http
               protocol: TCP
+          env:
+            - name: ELASTICSEARCH_HOSTS
+              value: http://elasticsearch.elk.svc.cluster.local:9200
+            - name: I18N_LOCALE
+              value: zh-CN
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "500Mi"
+            limits:
+              cpu: "2000m"
+              memory: "2Gi"
+          readinessProbe:
+            httpGet:
+              path: /api/status
+              port: 5601
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /api/status
+              port: 5601
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+
 ---
 apiVersion: v1
 kind: Service
 metadata:
-   name: dinginx-kibana
-   namespace: dinginx-efk
+  name: kibana
+  namespace: elk
+  labels:
+    app: kibana
 spec:
-type: NodePort
-  ports:
-  - port: 5601
-    protocol: TCP
-    targetPort: ui
-    nodePort: 5601
+  type: NodePort
   selector:
-    k8s-app: kibana
+    app: kibana
+  ports:
+    - port: 5601
+      targetPort: 5601
+      nodePort: 30561
+      protocol: TCP
+      name: http

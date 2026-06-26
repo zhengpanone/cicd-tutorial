@@ -108,12 +108,12 @@ spec:
     group: cert-manager.io
 
 ---
-# 7. dinginx-efk 命名空间证书（kibana）
+# 7. elk 命名空间证书（kibana）
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: efk-tls
-  namespace: dinginx-efk
+  namespace: elk
 spec:
   secretName: efk-tls
   duration: 8760h

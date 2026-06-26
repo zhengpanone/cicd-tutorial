@@ -21,7 +21,7 @@ kubectl wait --for=condition=Available deployment/cert-manager-cainjector -n cer
 # 确保目标命名空间已存在
 kubectl create namespace web-app --dry-run=client -o yaml | kubectl apply -f -
 kubectl create namespace devops --dry-run=client -o yaml | kubectl apply -f -
-kubectl create namespace dinginx-efk --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace elk --dry-run=client -o yaml | kubectl apply -f -
 
 # 创建证书资源
 kubectl apply -f tls-resources.yaml
@@ -40,7 +40,7 @@ selfsigned-cluster-issuer (ClusterIssuer, 自签名根)
                     ├── web-app-tls  (web-app)      → gin/express/springboot.k8s
                     ├── devops-tls   (devops)       → jenkins.k8s
                     ├── default-tls  (default)      → nacos/consul/rustfs/prometheus/jaeger/sentinel/minio/rocketmq/redisinsight/emqx/attu.k8s
-                    └── efk-tls      (dinginx-efk)  → kibana.k8s
+                    └── efk-tls      (elk)           → kibana.k8s
 ```
 
 所有 Issuer 均为 ClusterIssuer（集群级），Certificate 和 Secret 在各目标命名空间内。

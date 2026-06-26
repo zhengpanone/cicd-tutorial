@@ -331,14 +331,14 @@ spec:
                 port:
                   number: 3000
 
-# ─── dinginx-efk 命名空间 ──────────────────────────────────────────────────────
+# ─── elk 命名空间 ──────────────────────────────────────────────────────────────
 
 ---
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: kibana
-  namespace: dinginx-efk
+  namespace: elk
   annotations:
     nginx.ingress.kubernetes.io/ssl-redirect: "false"
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
@@ -356,6 +356,6 @@ spec:
             pathType: Prefix
             backend:
               service:
-                name: dinginx-kibana
+                name: kibana
                 port:
                   number: 5601

@@ -1,8 +1,16 @@
+# =============================================================================
+# Elasticsearch 单节点部署（elk 命名空间）
+# 数据持久化: /run/desktop/mnt/host/e/dockerstore/elasticsearch/
+# =============================================================================
+
+# Namespace
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: elk
+
 ---
-# ---------------------------------------------------------------
-# 1. PersistentVolume - data（3个，对应3个Pod的volumeClaimTemplates）
-#    claimRef 预绑定，防止被其他 PVC 抢占
-# ---------------------------------------------------------------
+# PersistentVolume（预绑定 claimRef，防止被其他 PVC 抢占）
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -22,39 +30,32 @@ spec:
     apiVersion: v1
     kind: PersistentVolumeClaim
     name: data-elasticsearch-0
-    namespace: default
+    namespace: elk
   hostPath:
     path: /run/desktop/mnt/host/e/dockerstore/elasticsearch/data-0
     type: DirectoryOrCreate
- 
+
 ---
-# 2. 创建 ConfigMap (Elasticsearch 配置)
+# ConfigMap
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: es-config
-  namespace: default
+  namespace: elk
 data:
   elasticsearch.yml: |
     cluster.name: es-cluster
     network.host: 0.0.0.0
-
     discovery.type: single-node
-
     node.roles: [ master, data, ingest ]
-
     path.data: /usr/share/elasticsearch/data
-
     bootstrap.memory_lock: false
     http.port: 9200
     transport.port: 9300
-
     xpack.security.enabled: false
     xpack.security.transport.ssl.enabled: false
     xpack.security.http.ssl.enabled: false
-
     xpack.monitoring.collection.enabled: true
-
     http.cors.enabled: true
     http.cors.allow-origin: "*"
     http.cors.allow-headers: "X-Requested-With,Content-Type,Content-Length,Authorization"
@@ -77,14 +78,13 @@ data:
     -Dlog4j.shutdownHookEnabled=false
     -Dlog4j2.disable.jmx=true
 
-       
 ---
-# 5. 创建 Headless Service (用于集群发现)
+# Headless Service（StatefulSet 集群发现）
 apiVersion: v1
 kind: Service
 metadata:
   name: elasticsearch-headless
-  namespace: default
+  namespace: elk
   labels:
     app: elasticsearch
 spec:
@@ -93,17 +93,56 @@ spec:
   selector:
     app: elasticsearch
   ports:
-  - port: 9300
-    name: transport
-    protocol: TCP
+    - port: 9300
+      name: transport
+      protocol: TCP
 
 ---
-# 6. 创建 StatefulSet
+# ClusterIP Service（集群内访问，供 Kibana/Filebeat 使用）
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch
+  namespace: elk
+  labels:
+    app: elasticsearch
+spec:
+  selector:
+    app: elasticsearch
+  type: ClusterIP
+  ports:
+    - port: 9200
+      targetPort: 9200
+      protocol: TCP
+      name: http
+
+---
+# NodePort Service（外部测试访问）
+apiVersion: v1
+kind: Service
+metadata:
+  name: elasticsearch-nodeport
+  namespace: elk
+  labels:
+    app: elasticsearch
+spec:
+  selector:
+    app: elasticsearch
+  type: NodePort
+  ports:
+    - port: 9200
+      targetPort: 9200
+      nodePort: 30920
+      protocol: TCP
+      name: http
+
+---
+# StatefulSet
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: elasticsearch
-  namespace: default
+  namespace: elk
   labels:
     app: elasticsearch
 spec:
@@ -118,117 +157,76 @@ spec:
         app: elasticsearch
     spec:
       securityContext:
-        # 在 Pod 级别设置 fsGroup，这样所有容器都能正确访问挂载的卷
         fsGroup: 1000
       containers:
-      - name: elasticsearch
-        image: elasticsearch:8.13.4
-        securityContext:
-          # Elasticsearch容器默认以UID 1000运行
-          runAsUser: 1000
-          runAsGroup: 1000
-        imagePullPolicy: IfNotPresent
-        ports:
-        - containerPort: 9200
-          name: http
-        - containerPort: 9300
-          name: transport
-        env:
-        - name: ES_JAVA_OPTS
-          value: "-Xms512m -Xmx512m"
-        - name: node.name
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.name
-        - name: discovery.type
-          value: single-node
-        volumeMounts:
-        - name: data
-          mountPath: /usr/share/elasticsearch/data
+        - name: elasticsearch
+          image: elasticsearch:8.13.4
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            runAsUser: 1000
+            runAsGroup: 1000
+          ports:
+            - containerPort: 9200
+              name: http
+            - containerPort: 9300
+              name: transport
+          env:
+            - name: ES_JAVA_OPTS
+              value: "-Xms512m -Xmx512m"
+            - name: node.name
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
+            - name: discovery.type
+              value: single-node
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "1Gi"
+              cpu: "1000m"
+          volumeMounts:
+            - name: data
+              mountPath: /usr/share/elasticsearch/data
+            - name: config
+              mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
+              subPath: elasticsearch.yml
+            - name: config
+              mountPath: /usr/share/elasticsearch/config/jvm.options
+              subPath: jvm.options
+            - name: logs
+              mountPath: /usr/share/elasticsearch/logs
+          livenessProbe:
+            httpGet:
+              path: /_cluster/health?local=true
+              port: 9200
+            initialDelaySeconds: 90
+            periodSeconds: 30
+            timeoutSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /_cluster/health?local=true
+              port: 9200
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+      volumes:
         - name: config
-          mountPath: /usr/share/elasticsearch/config/elasticsearch.yml
-          subPath: elasticsearch.yml
-        - name: config
-          mountPath: /usr/share/elasticsearch/config/jvm.options
-          subPath: jvm.options
+          configMap:
+            name: es-config
+        - name: logs
+          hostPath:
+            path: /run/desktop/mnt/host/e/dockerstore/elasticsearch/logs
+            type: DirectoryOrCreate
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: manual
         resources:
           requests:
-            memory: "1Gi"
-            cpu: "1000m"
-          limits:
-            memory: "1Gi"
-            cpu: "1000m"
-        livenessProbe:
-          httpGet:
-            path: /_cluster/health?local=true
-            port: 9200
-          initialDelaySeconds: 90
-          periodSeconds: 30
-          timeoutSeconds: 10
-          failureThreshold: 3
-        readinessProbe:
-          httpGet:
-            path: /_cluster/health?local=true
-            port: 9200
-          initialDelaySeconds: 60
-          periodSeconds: 10
-          timeoutSeconds: 5
-          failureThreshold: 3
-      volumes:
-      # logs 直接 hostPath 挂载，不走 PV/PVC
-      - name: logs
-        hostPath:
-          path: /run/desktop/mnt/host/e/dockerstore/elasticsearch/logs
-          type: DirectoryOrCreate
-      - name: config
-        configMap:
-          name: es-config
-
-  volumeClaimTemplates:
-  - metadata:
-      name: data
-    spec:
-      accessModes: [ "ReadWriteOnce" ]
-      storageClassName: manual
-      resources:
-        requests:
-          storage: 30Gi
-
----
-# 7. 创建 ClusterIP Service
-apiVersion: v1
-kind: Service
-metadata:
-  name: elasticsearch-service
-  namespace: default
-  labels:
-    app: elasticsearch
-spec:
-  selector:
-    app: elasticsearch
-  type: ClusterIP
-  ports:
-  - port: 9200
-    targetPort: 9200
-    protocol: TCP
-    name: http
-
----
-# 8. 创建 NodePort Service（本地测试外部访问入口）
-apiVersion: v1
-kind: Service
-metadata:
-  name: elasticsearch-nodeport
-  namespace: default
-  labels:
-    app: elasticsearch
-spec:
-  selector:
-    app: elasticsearch
-  type: NodePort
-  ports:
-  - port: 9200
-    targetPort: 9200
-    nodePort: 30920
-    protocol: TCP
-    name: http
+            storage: 30Gi
