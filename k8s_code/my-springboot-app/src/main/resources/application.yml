@@ -1,4 +1,4 @@
-server:
+﻿server:
   port: 8080
   shutdown: graceful
 
@@ -25,3 +25,7 @@ management:
       enabled: true
 app:
   version: 1.0.0
+emqx:
+  broker-url: ${EMQX_BROKER_URL:tcp://localhost:1883}
+  client-id-prefix: ${EMQX_CLIENT_ID_PREFIX:my-springboot-app}
+

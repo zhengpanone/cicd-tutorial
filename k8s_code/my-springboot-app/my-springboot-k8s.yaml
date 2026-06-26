@@ -1,4 +1,4 @@
----
+﻿---
 # Namespace
 apiVersion: v1
 kind: Namespace
@@ -27,6 +27,11 @@ spec:
           imagePullPolicy: Always
           ports:
             - containerPort: 8080
+          env:
+            - name: EMQX_BROKER_URL
+              value: tcp://emqx.emqx.svc.cluster.local:1883
+            - name: EMQX_CLIENT_ID_PREFIX
+              value: my-springboot-app
 
           readinessProbe:
             httpGet:
@@ -63,3 +68,4 @@ spec:
       targetPort: 8080
       nodePort: 30004
       protocol: TCP
+
