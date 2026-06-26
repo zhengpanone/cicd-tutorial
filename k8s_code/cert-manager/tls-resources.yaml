@@ -1,0 +1,62 @@
+# =============================================================================
+# cert-manager TLS 资源清单
+# 自签名 CA -> 签发多域名证书 -> 自动生成 web-app-tls Secret
+# =============================================================================
+
+# 1. 自签名 Issuer（用于签发 CA 证书）
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: selfsigned-issuer
+  namespace: web-app
+spec:
+  selfSigned: {}
+
+---
+# 2. CA 证书（中间 CA，有效期 10 年）
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: web-app-ca
+  namespace: web-app
+spec:
+  isCA: true
+  commonName: web-app-ca
+  secretName: web-app-ca-secret
+  duration: 87600h # 10 年
+  issuerRef:
+    name: selfsigned-issuer
+    kind: Issuer
+    group: cert-manager.io
+
+---
+# 3. CA Issuer（用中间 CA 签发应用证书）
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: web-app-ca-issuer
+  namespace: web-app
+spec:
+  ca:
+    secretName: web-app-ca-secret
+
+---
+# 4. 应用证书（SAN 多域名，自动续签）
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: web-app-tls
+  namespace: web-app
+spec:
+  secretName: web-app-tls
+  duration: 8760h # 1 年
+  renewBefore: 720h # 到期前 30 天自动续签
+  commonName: gin.k8s
+  dnsNames:
+    - gin.k8s
+    - express.k8s
+    - springboot.k8s
+  issuerRef:
+    name: web-app-ca-issuer
+    kind: Issuer
+    group: cert-manager.io

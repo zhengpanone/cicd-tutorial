@@ -73,6 +73,10 @@ metadata:
     nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
 spec:
   ingressClassName: nginx
+  tls:
+    - hosts:
+        - gin.k8s
+      secretName: web-app-tls
   rules:
     - host: gin.k8s
       http:
