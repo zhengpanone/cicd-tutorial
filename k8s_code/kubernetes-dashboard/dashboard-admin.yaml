@@ -33,3 +33,19 @@ metadata:
   annotations:
     kubernetes.io/service-account.name: dashboard-admin
 type: kubernetes.io/service-account-token
+
+---
+# NodePort Service - 外部访问 Dashboard
+apiVersion: v1
+kind: Service
+metadata:
+  name: kubernetes-dashboard-nodeport
+  namespace: kubernetes-dashboard
+spec:
+  type: NodePort
+  selector:
+    k8s-app: kubernetes-dashboard
+  ports:
+    - port: 443
+      targetPort: 8443
+      nodePort: 30443
