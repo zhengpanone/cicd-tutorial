@@ -1,14 +1,13 @@
 # =============================================================================
 # cert-manager TLS 资源清单
-# 自签名 CA -> 签发多域名证书 -> 自动生成 web-app-tls Secret
+# 自签名 CA -> ClusterIssuer -> 各命名空间独立证书
 # =============================================================================
 
-# 1. 自签名 Issuer（用于签发 CA 证书）
+# 1. 自签名 ClusterIssuer（集群级，用于签发 CA 证书）
 apiVersion: cert-manager.io/v1
-kind: Issuer
+kind: ClusterIssuer
 metadata:
-  name: selfsigned-issuer
-  namespace: web-app
+  name: selfsigned-cluster-issuer
 spec:
   selfSigned: {}
 
@@ -17,31 +16,30 @@ spec:
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: web-app-ca
-  namespace: web-app
+  name: k8s-ca
+  namespace: cert-manager
 spec:
   isCA: true
-  commonName: web-app-ca
-  secretName: web-app-ca-secret
+  commonName: k8s-ca
+  secretName: k8s-ca-secret
   duration: 87600h # 10 年
   issuerRef:
-    name: selfsigned-issuer
-    kind: Issuer
+    name: selfsigned-cluster-issuer
+    kind: ClusterIssuer
     group: cert-manager.io
 
 ---
-# 3. CA Issuer（用中间 CA 签发应用证书）
+# 3. CA ClusterIssuer（用中间 CA 签发各命名空间的应用证书）
 apiVersion: cert-manager.io/v1
-kind: Issuer
+kind: ClusterIssuer
 metadata:
-  name: web-app-ca-issuer
-  namespace: web-app
+  name: k8s-ca-issuer
 spec:
   ca:
-    secretName: web-app-ca-secret
+    secretName: k8s-ca-secret
 
 ---
-# 4. 应用证书（SAN 多域名，自动续签）
+# 4. web-app 命名空间证书（gin, express, springboot）
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -57,6 +55,72 @@ spec:
     - express.k8s
     - springboot.k8s
   issuerRef:
-    name: web-app-ca-issuer
-    kind: Issuer
+    name: k8s-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# 5. devops 命名空间证书（jenkins）
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: devops-tls
+  namespace: devops
+spec:
+  secretName: devops-tls
+  duration: 8760h
+  renewBefore: 720h
+  commonName: jenkins.k8s
+  dnsNames:
+    - jenkins.k8s
+  issuerRef:
+    name: k8s-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# 6. default 命名空间证书（nacos, consul, rustfs, prometheus, jaeger, sentinel, minio, rocketmq, redisinsight, attu）
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: default-tls
+  namespace: default
+spec:
+  secretName: default-tls
+  duration: 8760h
+  renewBefore: 720h
+  commonName: nacos.k8s
+  dnsNames:
+    - nacos.k8s
+    - consul.k8s
+    - rustfs.k8s
+    - prometheus.k8s
+    - jaeger.k8s
+    - sentinel.k8s
+    - minio.k8s
+    - rocketmq.k8s
+    - redisinsight.k8s
+    - attu.k8s
+  issuerRef:
+    name: k8s-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
+
+---
+# 7. dinginx-efk 命名空间证书（kibana）
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: efk-tls
+  namespace: dinginx-efk
+spec:
+  secretName: efk-tls
+  duration: 8760h
+  renewBefore: 720h
+  commonName: kibana.k8s
+  dnsNames:
+    - kibana.k8s
+  issuerRef:
+    name: k8s-ca-issuer
+    kind: ClusterIssuer
     group: cert-manager.io

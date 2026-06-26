@@ -11,40 +11,44 @@ kubectl wait --for=condition=Available deployment/cert-manager -n cert-manager -
 kubectl wait --for=condition=Available deployment/cert-manager-webhook -n cert-manager --timeout=120s
 kubectl wait --for=condition=Available deployment/cert-manager-cainjector -n cert-manager --timeout=120s
 
-# 2. 确保 web-app 命名空间已存在
+# 2. 确保命名空间已存在
 kubectl create namespace web-app --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace devops --dry-run=client -o yaml | kubectl apply -f -
+kubectl create namespace dinginx-efk --dry-run=client -o yaml | kubectl apply -f -
 
 # 3. 创建证书资源
 kubectl apply -f tls-resources.yaml
 
-# 4. 验证证书和 Secret 已自动生成
-kubectl get certificate -n web-app
-kubectl get secret web-app-tls -n web-app
+# 4. 验证各命名空间证书和 Secret
+kubectl get certificate -A
+kubectl get secret -A | grep -E "tls$|ca-secret"
 ```
 
-## 工作原理
+## 架构
 
 ```
-selfsigned-issuer (自签名)
-    └── web-app-ca (中间 CA, 10年)
-            └── web-app-ca-issuer (CA签发器)
-                    └── web-app-tls (应用证书, 1年, 到期前30天自动续签)
-                            └── Secret: web-app-tls
-                                    ├── gin.k8s
-                                    ├── express.k8s
-                                    └── springboot.k8s
+selfsigned-cluster-issuer (ClusterIssuer, 自签名)
+    └── k8s-ca (中间 CA, cert-manager 命名空间, 10年)
+            └── k8s-ca-issuer (ClusterIssuer, CA签发器)
+                    ├── web-app-tls   (web-app)       → gin/express/springboot.k8s
+                    ├── devops-tls    (devops)        → jenkins.k8s
+                    ├── default-tls   (default)       → nacos/consul/rustfs/prometheus/jaeger/sentinel/minio/rocketmq/redisinsight/attu.k8s
+                    └── efk-tls       (dinginx-efk)   → kibana.k8s
 ```
 
 ## 新增域名
 
-编辑 `tls-resources.yaml`，在 Certificate 的 `dnsNames` 中添加新域名，然后：
+1. 编辑 `tls-resources.yaml`，在对应命名空间 Certificate 的 `dnsNames` 中添加新域名
+2. 在 `infra-ingress.yaml` 或 `web-app-ingress.yaml` 中添加 Ingress 资源
+3. 在 Windows hosts 文件中添加 `127.0.0.1 <新域名>`
 
 ```bash
 kubectl apply -f tls-resources.yaml
+kubectl apply -f infra-ingress.yaml
 ```
 
 cert-manager 会自动重新签发证书并更新 Secret。
 
-## 切换到真实证书（Let's Encrypt）
+## 切换到 Let's Encrypt
 
-将 ClusterIssuer 换成 Let's Encrypt，Certificate 的 issuerRef 改指向它即可，应用 YAML 零修改。
+将 `k8s-ca-issuer` 替换为 Let's Encrypt ClusterIssuer，所有 Certificate 的 issuerRef 改指向它即可，Ingress 零修改。
