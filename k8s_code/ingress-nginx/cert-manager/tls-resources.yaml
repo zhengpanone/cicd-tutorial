@@ -79,7 +79,7 @@ spec:
     group: cert-manager.io
 
 ---
-# 6. default 命名空间证书（nacos, consul, rustfs, prometheus, jaeger, sentinel, minio, rocketmq, redisinsight, attu）
+# 6. default 命名空间证书（nacos, consul, rustfs, prometheus, jaeger, sentinel, minio, rocketmq, redisinsight, emqx, attu）
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -100,27 +100,28 @@ spec:
     - minio.k8s
     - rocketmq.k8s
     - redisinsight.k8s
+    - emqx.k8s
     - attu.k8s
   issuerRef:
     name: k8s-ca-issuer
     kind: ClusterIssuer
     group: cert-manager.io
 
-# ---
-# # 7. dinginx-efk 命名空间证书（kibana）
-# apiVersion: cert-manager.io/v1
-# kind: Certificate
-# metadata:
-#   name: efk-tls
-#   namespace: dinginx-efk
-# spec:
-#   secretName: efk-tls
-#   duration: 8760h
-#   renewBefore: 720h
-#   commonName: kibana.k8s
-#   dnsNames:
-#     - kibana.k8s
-#   issuerRef:
-#     name: k8s-ca-issuer
-#     kind: ClusterIssuer
-#     group: cert-manager.io
+---
+# 7. dinginx-efk 命名空间证书（kibana）
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: efk-tls
+  namespace: dinginx-efk
+spec:
+  secretName: efk-tls
+  duration: 8760h
+  renewBefore: 720h
+  commonName: kibana.k8s
+  dnsNames:
+    - kibana.k8s
+  issuerRef:
+    name: k8s-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io
