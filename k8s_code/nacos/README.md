@@ -111,8 +111,8 @@ kubectl rollout status deployment/nacos
 ### 备份与恢复
 ```bash
 # 备份数据（PV中的数据）
-# 数据存储在：/mnt/host/d/dockerstore/nacos/data
-# 日志存储在：/mnt/host/d/dockerstore/nacos/logs
+# 数据存储在：/mnt/host/e/dockerstore/nacos/data
+# 日志存储在：/mnt/host/e/dockerstore/nacos/logs
 
 # 导出配置
 kubectl get configmap nacos-config -o yaml > nacos-config-backup.yaml

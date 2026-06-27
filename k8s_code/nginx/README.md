@@ -50,10 +50,10 @@ kubectl run curl --image=curlimages/curl:latest --rm -it -- curl nginx-service/h
 ## 方法1: 直接编辑宿主机文件
 ```bash
 # 在宿主机上编辑
-vim /mnt/host/d/dockerstore/nginx/html/index.html
+vim /mnt/host/e/dockerstore/nginx/html/index.html
 
 # 或者创建新文件
-echo "<h1>Hello from Nginx</h1>" > /mnt/host/d/dockerstore/nginx/html/test.html
+echo "<h1>Hello from Nginx</h1>" > /mnt/host/e/dockerstore/nginx/html/test.html
 
 # 访问: http://<NODE_IP>:30080/test.html
 ```
@@ -113,7 +113,7 @@ kubectl exec -it <nginx-pod-name> -- tail -f /var/log/nginx/access.log
 kubectl exec -it <nginx-pod-name> -- tail -f /var/log/nginx/error.log
 
 # 在宿主机查看日志
-tail -f /mnt/host/d/dockerstore/nginx/logs/access.log
+tail -f /mnt/host/e/dockerstore/nginx/logs/access.log
 ```
 
 # 常用场景

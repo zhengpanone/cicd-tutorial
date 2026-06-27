@@ -15,7 +15,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/nexus/data
+    path: /mnt/host/e/dockerstore/nexus/data
     type: DirectoryOrCreate
 
 ---
@@ -35,7 +35,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/nexus/logs
+    path: /mnt/host/e/dockerstore/nexus/logs
     type: DirectoryOrCreate
 
 ---

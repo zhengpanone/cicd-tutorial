@@ -14,7 +14,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/redisinsight/data
+    path: /mnt/host/e/dockerstore/redisinsight/data
     type: DirectoryOrCreate
 ---
 # 2. PersistentVolume - Logs
@@ -33,7 +33,7 @@ spec:
   persistentVolumeReclaimPolicy: Retain
   storageClassName: manual
   hostPath:
-    path: /mnt/host/d/dockerstore/redisinsight/logs
+    path: /mnt/host/e/dockerstore/redisinsight/logs
     type: DirectoryOrCreate
 ---     
 # 3. PersistentVolumeClaim - Data

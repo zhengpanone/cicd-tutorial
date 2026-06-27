@@ -1,8 +1,8 @@
 # 部署步骤
 ```bash
 # 1. 创建存储目录
-sudo mkdir -p /mnt/host/d/dockerstore/gitlab/{config,logs,data}
-sudo chmod -R 777 /mnt/host/d/dockerstore/gitlab
+sudo mkdir -p /mnt/host/e/dockerstore/gitlab/{config,logs,data}
+sudo chmod -R 777 /mnt/host/e/dockerstore/gitlab
 
 # 2. 部署 GitLab
 kubectl apply -f gitlab-k8s.yaml
