@@ -1,0 +1,77 @@
+services:
+  # 主节点
+  redis-node1:
+    image: redis
+    container_name: redis-node1
+    privileged: true # 拥有容器内命令执行的权限
+    volumes:
+      - /opt/dockerstore/redis/cluster/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - 16379:6379
+      - 26379:16379
+    command: redis-server /usr/local/etc/redis/redis.conf
+
+  redis-node2:
+    image: redis
+    container_name: redis-node2
+    privileged: true # 拥有容器内命令执行的权限
+    volumes:
+      - /opt/dockerstore/redis/cluster/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - 16380:6379
+      - 26380:16379
+    command:  redis-server /usr/local/etc/redis/redis.conf 
+
+  redis-node3:
+    image: redis
+    container_name: redis-node3
+    privileged: true # 拥有容器内命令执行的权限
+    volumes:
+      - /opt/dockerstore/redis/cluster/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - 16381:6379
+      - 26381:16379
+    command: redis-server /usr/local/etc/redis/redis.conf
+
+  redis-node4:
+    image: redis
+    container_name: redis-node4
+    privileged: true # 拥有容器内命令执行的权限
+    volumes:
+      - /opt/dockerstore/redis/cluster/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - 16382:6379
+      - 26382:16379
+    command: redis-server /usr/local/etc/redis/redis.conf 
+
+  redis-node5:
+    image: redis
+    container_name: redis-node5
+    privileged: true # 拥有容器内命令执行的权限
+    volumes:
+      - /opt/dockerstore/redis/cluster/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - 16383:6379
+      - 26383:16379
+    command: redis-server /usr/local/etc/redis/redis.conf
+ 
+  redis-node6:
+    image: redis
+    container_name: redis-node6
+    privileged: true # 拥有容器内命令执行的权限
+    volumes:
+      - /opt/dockerstore/redis/cluster/redis.conf:/usr/local/etc/redis/redis.conf
+    ports:
+      - 16384:6379
+      - 26384:16379
+    command: redis-server /usr/local/etc/redis/redis.conf
+
+# docker exec -it redis-node1 redis-cli --cluster create \
+#   redis-node1:6379 \
+#   redis-node2:6379 \
+#   redis-node3:6379 \
+#   redis-node4:6379 \
+#   redis-node5:6379 \
+#   redis-node6:6379 \
+#   --cluster-replicas 1
+# docker-compose -f redis-cluster.yml up 

@@ -1,0 +1,100 @@
+version: '3'
+services:
+    # 生成 elastic-certificates.p12
+  cert_generator:
+    image: elasticsearch:7.14.1
+    container_name: cert_generator
+    entrypoint:
+      [
+        "/bin/bash",
+        "-c",
+        "rm -f /usr/share/elasticsearch/config/elastic-certificates.p12 && elasticsearch-certutil cert --silent --pem --out /usr/share/elasticsearch/config/elastic-certificates.p12",
+      ]
+    volumes:
+      - ./elasticsearch/config/:/usr/share/elasticsearch/config
+  es01:
+    image: elasticsearch:7.14.1
+    container_name: es01
+    environment:
+      - node.name=es01
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es02,es03
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es01-data:/usr/share/elasticsearch/data
+      - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - ./elasticsearch/config/elastic-certificates.p12:/usr/share/elasticsearch/config/elastic-certificates.p12
+    ports:
+      - 9201:9200
+  es02:
+    image: elasticsearch:7.14.1
+    container_name: es02
+    environment:
+      - node.name=es02
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es01,es03
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    volumes:
+      - es02-data:/usr/share/elasticsearch/data
+      - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - ./elasticsearch/config/elastic-certificates.p12:/usr/share/elasticsearch/config/elastic-certificates.p12
+    ports:
+      - 9202:9200
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+
+  es03:
+    image: elasticsearch:7.14.1
+    container_name: es03
+    environment:
+      - node.name=es03
+      - cluster.name=es-docker-cluster
+      - discovery.seed_hosts=es01,es02
+      - cluster.initial_master_nodes=es01,es02,es03
+      - bootstrap.memory_lock=true
+      - "ES_JAVA_OPTS=-Xms512m -Xmx512m"
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - es03-data:/usr/share/elasticsearch/data
+      - ./elasticsearch/config/elasticsearch.yml:/usr/share/elasticsearch/config/elasticsearch.yml
+      - ./elasticsearch/config/elastic-certificates.p12:/usr/share/elasticsearch/config/elastic-certificates.p12
+    ports:
+      - 9203:9200
+  kibana:
+    image: kibana:7.14.1 
+    container_name: kibana01
+    volumes:
+      - ./kibana/config/kibana.yml:/usr/share/kibana/config/kibana.yml
+    environment:
+      - ELASTICSEARCH_HOSTS=http://es01:9200
+      - ELASTICSEARCH_URL=http://es01:9200
+      - I18N_LOCALE=zh-CN
+    ports:
+      - "5602:5601"
+  cerebro:
+    image: lmenezes/cerebro:0.9.4
+    container_name: cerebro
+    environment:
+      - CEREBRO_HOSTS=http://es01:9200
+    ports:
+      - "9000:9000"
+volumes:
+  es01-data:
+    driver: local
+  es02-data:
+    driver: local
+  es03-data:
+    driver: loca

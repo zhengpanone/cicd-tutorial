@@ -1,0 +1,6 @@
+server.name: kibana
+server.host: "0.0.0.0"
+xpack.monitoring.ui.container.elasticsearch.enabled: true
+elasticsearch.username: "elastic"  # es账号
+elasticsearch.password: "*******"   # es密码 进入容器设置的密码
+i18n.locale: zh-CN # 中文
