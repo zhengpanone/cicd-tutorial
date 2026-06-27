@@ -1,10 +1,18 @@
 # =============================================================================
 # Headlamp on Kubernetes (Docker Desktop)
-# K8s 官方推荐的 Dashboard 替代品，支持 Token 登录，界面更现代
-# 替代已归档的 kubernetes-dashboard 项目
+# K8s 官方推荐的 Dashboard 替代品，支持 ServiceAccount Token 登录
+# 参考官方文档: https://headlamp.dev/docs/latest/installation/
 # =============================================================================
 
-# 1. ServiceAccount - headlamp-admin
+# 1. ServiceAccount - headlamp-admin（官方示例命名空间）
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: headlamp-admin
+  namespace: kube-system
+
+---
+# 2. ServiceAccount - headlamp-admin（兼容当前 kubernetes-dashboard 命名空间）
 apiVersion: v1
 kind: ServiceAccount
 metadata:
@@ -12,7 +20,7 @@ metadata:
   namespace: kubernetes-dashboard
 
 ---
-# 2. ClusterRoleBinding - headlamp-admin -> cluster-admin
+# 3. ClusterRoleBinding - headlamp-admin -> cluster-admin
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
@@ -24,10 +32,13 @@ roleRef:
 subjects:
   - kind: ServiceAccount
     name: headlamp-admin
+    namespace: kube-system
+  - kind: ServiceAccount
+    name: headlamp-admin
     namespace: kubernetes-dashboard
 
 ---
-# 3. Deployment - headlamp
+# 4. Deployment - headlamp
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -57,7 +68,6 @@ spec:
           imagePullPolicy: IfNotPresent
           args:
             - -in-cluster
-            - -in-cluster-context-name=main
             - -plugins-dir=/headlamp/plugins
             - -me-username-path=sub
             - -log-level=debug
@@ -68,15 +78,17 @@ spec:
             httpGet:
               path: /
               port: 4466
-            initialDelaySeconds: 10
+            initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 30
             failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /
               port: 4466
-            initialDelaySeconds: 5
+            initialDelaySeconds: 30
             periodSeconds: 10
+            timeoutSeconds: 30
             failureThreshold: 3
           resources:
             requests:
@@ -87,7 +99,7 @@ spec:
               memory: 256Mi
 
 ---
-# 4. Service - headlamp（ClusterIP）
+# 5. Service - headlamp（ClusterIP）
 apiVersion: v1
 kind: Service
 metadata:
@@ -106,7 +118,7 @@ spec:
     app: headlamp
 
 ---
-# 5. Service - headlamp-nodeport（NodePort 外部访问）
+# 6. Service - headlamp-nodeport（NodePort 外部访问）
 apiVersion: v1
 kind: Service
 metadata:
@@ -124,3 +136,31 @@ spec:
       name: http
   selector:
     app: headlamp
+
+---
+# 7. Ingress - headlamp（通过 ingress-nginx 访问）
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: headlamp
+  namespace: kubernetes-dashboard
+  annotations:
+    nginx.ingress.kubernetes.io/ssl-redirect: "false"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
+spec:
+  ingressClassName: nginx
+  tls:
+    - hosts:
+        - headlamp.k8s
+      secretName: headlamp-tls
+  rules:
+    - host: headlamp.k8s
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: headlamp
+                port:
+                  number: 80
