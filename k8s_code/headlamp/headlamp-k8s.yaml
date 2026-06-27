@@ -59,6 +59,8 @@ spec:
             - -in-cluster
             - -in-cluster-context-name=main
             - -plugins-dir=/headlamp/plugins
+            - -me-username-path=sub
+            - -log-level=debug
           ports:
             - containerPort: 4466
               name: http

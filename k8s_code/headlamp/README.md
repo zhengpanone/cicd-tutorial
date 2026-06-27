@@ -79,7 +79,11 @@ kubectl exec -it $(kubectl get pod -n kubernetes-dashboard -l app=headlamp -o na
 
 ghcr.io 在国内可能访问不畅，可通过 Docker daemon.json 配置镜像代理或手动拉取后 `docker tag` 到本地。
 
-### Token 登录失败
+### Token 登录后显示 "Error authenticating"
+
+Headlamp 的 `/me` 端点默认从 JWT 的 OIDC 字段（`preferred_username`、`name` 等）提取用户名，但 K8s ServiceAccount Token 不含这些字段，只有 `sub`。部署时已通过 `-me-username-path=sub` 参数解决。如自行部署需确保加上此参数。
+
+### Token 获取失败
 
 确认 ServiceAccount 和 ClusterRoleBinding 已正确创建：
 
