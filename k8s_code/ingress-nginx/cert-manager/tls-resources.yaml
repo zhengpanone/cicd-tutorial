@@ -150,19 +150,19 @@ spec:
     group: cert-manager.io
 
 ---
-# 9. kubernetes-dashboard 命名空间证书
+# 9. kubernetes-dashboard 命名空间证书（Headlamp）
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
-  name: dashboard-tls
+  name: headlamp-tls
   namespace: kubernetes-dashboard
 spec:
-  secretName: dashboard-tls
+  secretName: headlamp-tls
   duration: 8760h
   renewBefore: 720h
-  commonName: dashboard.k8s
+  commonName: headlamp.k8s
   dnsNames:
-    - dashboard.k8s
+    - headlamp.k8s
   issuerRef:
     name: k8s-ca-issuer
     kind: ClusterIssuer

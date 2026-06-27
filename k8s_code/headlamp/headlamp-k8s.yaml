@@ -1,0 +1,124 @@
+# =============================================================================
+# Headlamp on Kubernetes (Docker Desktop)
+# K8s 官方推荐的 Dashboard 替代品，支持 Token 登录，界面更现代
+# 替代已归档的 kubernetes-dashboard 项目
+# =============================================================================
+
+# 1. ServiceAccount - headlamp-admin
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: headlamp-admin
+  namespace: kubernetes-dashboard
+
+---
+# 2. ClusterRoleBinding - headlamp-admin -> cluster-admin
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: headlamp-admin
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: cluster-admin
+subjects:
+  - kind: ServiceAccount
+    name: headlamp-admin
+    namespace: kubernetes-dashboard
+
+---
+# 3. Deployment - headlamp
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: headlamp
+  namespace: kubernetes-dashboard
+  labels:
+    app: headlamp
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: headlamp
+  template:
+    metadata:
+      labels:
+        app: headlamp
+    spec:
+      serviceAccountName: headlamp-admin
+      automountServiceAccountToken: true
+      securityContext:
+        runAsUser: 100
+        runAsGroup: 101
+        runAsNonRoot: true
+      containers:
+        - name: headlamp
+          image: ghcr.io/headlamp-k8s/headlamp:latest
+          imagePullPolicy: IfNotPresent
+          args:
+            - -in-cluster
+            - -in-cluster-context-name=main
+            - -plugins-dir=/headlamp/plugins
+          ports:
+            - containerPort: 4466
+              name: http
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 4466
+            initialDelaySeconds: 10
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 4466
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            failureThreshold: 3
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 256Mi
+
+---
+# 4. Service - headlamp（ClusterIP）
+apiVersion: v1
+kind: Service
+metadata:
+  name: headlamp
+  namespace: kubernetes-dashboard
+  labels:
+    app: headlamp
+spec:
+  type: ClusterIP
+  ports:
+    - port: 80
+      targetPort: 4466
+      protocol: TCP
+      name: http
+  selector:
+    app: headlamp
+
+---
+# 5. Service - headlamp-nodeport（NodePort 外部访问）
+apiVersion: v1
+kind: Service
+metadata:
+  name: headlamp-nodeport
+  namespace: kubernetes-dashboard
+  labels:
+    app: headlamp
+spec:
+  type: NodePort
+  ports:
+    - port: 80
+      targetPort: 4466
+      nodePort: 30443
+      protocol: TCP
+      name: http
+  selector:
+    app: headlamp
