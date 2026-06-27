@@ -1,0 +1,360 @@
+# =============================================================================
+# Kong Gateway on Kubernetes (reuses existing PostgreSQL)
+# Requires the existing PostgreSQL resources from k8s_code/postgres
+# =============================================================================
+
+# 1. Secret - Kong database connection
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kong-secret
+  namespace: default
+  labels:
+    app: kong
+type: Opaque
+stringData:
+  KONG_PG_USER: postgres
+  KONG_PG_PASSWORD: postgres
+  KONG_PG_DATABASE: kong
+
+---
+# 2. Job - create the Kong database in the existing PostgreSQL instance
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kong-db-init
+  namespace: default
+  labels:
+    app: kong
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: kong
+        job: kong-db-init
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: kong-db-init
+          image: postgres:16.10-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PGHOST
+              value: postgres-service
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_USER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_PASSWORD
+          command:
+            - sh
+            - -ec
+            - |
+              until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; do
+                echo "waiting for postgres"
+                sleep 3
+              done
+
+              DB_EXISTS="$(psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='kong'")"
+              if [ "$DB_EXISTS" != "1" ]; then
+                psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -c "CREATE DATABASE kong"
+              fi
+
+---
+# 3. Job - Kong database bootstrap / upgrade
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: kong-migrations
+  namespace: default
+  labels:
+    app: kong
+spec:
+  backoffLimit: 6
+  template:
+    metadata:
+      labels:
+        app: kong
+        job: kong-migrations
+    spec:
+      restartPolicy: OnFailure
+      initContainers:
+        - name: wait-for-postgres
+          image: postgres:16.10-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PGHOST
+              value: postgres-service
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_USER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_PASSWORD
+          command:
+            - sh
+            - -ec
+            - |
+              until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; do
+                echo "waiting for postgres"
+                sleep 3
+              done
+
+              until psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='kong'" | grep -q 1; do
+                echo "waiting for kong database"
+                sleep 3
+              done
+      containers:
+        - name: kong-migrations
+          image: kong:3.5
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KONG_DATABASE
+              value: postgres
+            - name: KONG_PG_HOST
+              value: postgres-service
+            - name: KONG_PG_PORT
+              value: "5432"
+            - name: KONG_PG_USER
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_USER
+            - name: KONG_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_PASSWORD
+            - name: KONG_PG_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_DATABASE
+          command:
+            - sh
+            - -ec
+            - |
+              kong migrations bootstrap || (kong migrations up && kong migrations finish)
+
+---
+# 4. Deployment - Kong Gateway
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kong
+  namespace: default
+  labels:
+    app: kong
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: kong
+  template:
+    metadata:
+      labels:
+        app: kong
+    spec:
+      initContainers:
+        - name: wait-for-kong-schema
+          image: postgres:16.10-alpine
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: PGHOST
+              value: postgres-service
+            - name: PGPORT
+              value: "5432"
+            - name: PGUSER
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_USER
+            - name: PGPASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_PASSWORD
+          command:
+            - sh
+            - -ec
+            - |
+              until pg_isready -h "$PGHOST" -p "$PGPORT" -U "$PGUSER"; do
+                echo "waiting for postgres"
+                sleep 3
+              done
+
+              until psql -h "$PGHOST" -p "$PGPORT" -U "$PGUSER" -d kong -tAc "SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='schema_meta'" | grep -q 1; do
+                echo "waiting for kong migrations"
+                sleep 3
+              done
+      containers:
+        - name: kong
+          image: kong:3.5
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: KONG_DATABASE
+              value: postgres
+            - name: KONG_PG_HOST
+              value: postgres-service
+            - name: KONG_PG_PORT
+              value: "5432"
+            - name: KONG_PG_USER
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_USER
+            - name: KONG_PG_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_PASSWORD
+            - name: KONG_PG_DATABASE
+              valueFrom:
+                secretKeyRef:
+                  name: kong-secret
+                  key: KONG_PG_DATABASE
+            - name: KONG_PROXY_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_ADMIN_ACCESS_LOG
+              value: /dev/stdout
+            - name: KONG_PROXY_ERROR_LOG
+              value: /dev/stderr
+            - name: KONG_ADMIN_ERROR_LOG
+              value: /dev/stderr
+            - name: KONG_ADMIN_LISTEN
+              value: 0.0.0.0:8001, 0.0.0.0:8444 ssl
+            - name: KONG_PROXY_LISTEN
+              value: 0.0.0.0:8000, 0.0.0.0:8443 ssl
+            - name: KONG_STATUS_LISTEN
+              value: 0.0.0.0:8100
+            - name: KONG_LOG_LEVEL
+              value: info
+            - name: KONG_NGINX_WORKER_PROCESSES
+              value: "1"
+          ports:
+            - name: proxy
+              containerPort: 8000
+              protocol: TCP
+            - name: proxy-ssl
+              containerPort: 8443
+              protocol: TCP
+            - name: admin
+              containerPort: 8001
+              protocol: TCP
+            - name: admin-ssl
+              containerPort: 8444
+              protocol: TCP
+            - name: status
+              containerPort: 8100
+              protocol: TCP
+          livenessProbe:
+            httpGet:
+              path: /status
+              port: status
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            httpGet:
+              path: /status
+              port: status
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+
+---
+# 5. Service - Kong proxy (ClusterIP)
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-proxy
+  namespace: default
+  labels:
+    app: kong
+spec:
+  selector:
+    app: kong
+  ports:
+    - name: proxy
+      port: 8000
+      targetPort: proxy
+      protocol: TCP
+    - name: proxy-ssl
+      port: 8443
+      targetPort: proxy-ssl
+      protocol: TCP
+
+---
+# 6. Service - Kong admin API (ClusterIP)
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-admin
+  namespace: default
+  labels:
+    app: kong
+spec:
+  selector:
+    app: kong
+  ports:
+    - name: admin
+      port: 8001
+      targetPort: admin
+      protocol: TCP
+    - name: admin-ssl
+      port: 8444
+      targetPort: admin-ssl
+      protocol: TCP
+
+---
+# 7. Service - Kong NodePort access (local development)
+apiVersion: v1
+kind: Service
+metadata:
+  name: kong-nodeport
+  namespace: default
+  labels:
+    app: kong
+spec:
+  type: NodePort
+  selector:
+    app: kong
+  ports:
+    - name: proxy
+      port: 8000
+      targetPort: proxy
+      protocol: TCP
+      nodePort: 30000
+    - name: proxy-ssl
+      port: 8443
+      targetPort: proxy-ssl
+      protocol: TCP
+      nodePort: 30444
+    - name: admin
+      port: 8001
+      targetPort: admin
+      protocol: TCP
+      nodePort: 30001
