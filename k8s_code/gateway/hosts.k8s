@@ -1,0 +1,60 @@
+# =============================================================================
+# 本地 hosts 映射清单(28 个 host,对应 gateway/routes/ 全部 HTTPRoute)
+#
+# 用途:本地测试时把这些 *.k8s 域名解析到 istio-ingressgateway。
+#   - Docker Desktop:通常是 127.0.0.1
+#   - kind / minikube:用 `kubectl get svc -n istio-system istio-ingressgateway`
+#     看 EXTERNAL-IP,把下面的 127.0.0.1 全部替换成该 IP
+#
+# 追加到 hosts 文件:
+#   Windows: C:\Windows\System32\drivers\etc\hosts(管理员权限)
+#   Linux/macOS: /etc/hosts(sudo)
+#
+# Windows PowerShell(管理员)一键追加:
+#   Get-Content gateway\hosts.k8s | Add-Content C:\Windows\System32\drivers\etc\hosts
+#
+# Linux/macOS:
+#   sudo sh -c 'cat gateway/hosts.k8s >> /etc/hosts'
+# =============================================================================
+
+# ── web-app namespace ──────────────────────────────────────────────
+127.0.0.1 my-gin-app.k8s
+127.0.0.1 my-express-app.k8s
+127.0.0.1 my-springboot-app.k8s
+
+# ── devops namespace ───────────────────────────────────────────────
+127.0.0.1 jenkins.k8s
+127.0.0.1 gitea.k8s
+
+# ── default namespace ──────────────────────────────────────────────
+127.0.0.1 nacos.k8s
+127.0.0.1 consul.k8s
+127.0.0.1 rustfs.k8s
+127.0.0.1 prometheus.k8s
+127.0.0.1 jaeger.k8s
+127.0.0.1 sentinel.k8s
+127.0.0.1 minio.k8s
+127.0.0.1 rocketmq.k8s
+127.0.0.1 redisinsight.k8s
+127.0.0.1 emqx.k8s
+127.0.0.1 attu.k8s
+127.0.0.1 grafana.k8s
+127.0.0.1 loki.k8s
+127.0.0.1 kafka-ui.k8s
+
+# ── elk namespace ──────────────────────────────────────────────────
+127.0.0.1 kibana.k8s
+127.0.0.1 elasticsearch.k8s
+
+# ── harbor namespace ───────────────────────────────────────────────
+127.0.0.1 harbor.k8s
+
+# ── kubernetes-dashboard / headlamp namespace ──────────────────────
+127.0.0.1 headlamp.k8s
+127.0.0.1 headlamp-k8s.k8s
+
+# ── 无 TLS 演示(http listener)─────────────────────────────────────
+127.0.0.1 nginx.k8s
+127.0.0.1 rabbitmq.k8s
+127.0.0.1 nexus.k8s
+127.0.0.1 test.k8s

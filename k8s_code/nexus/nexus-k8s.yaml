@@ -299,30 +299,9 @@ spec:
     name: docker-proxy
 
 ---
-# 10. 创建 Ingress (可选 - 用于域名访问)
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: nexus-ingress
-  namespace: default
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"  # 允许大文件上传
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
-spec:
-  ingressClassName: nginx
-  rules:
-  - host: nexus.example.com  # 修改为你的域名
-    http:
-      paths:
-      - path: /
-        pathType: Prefix
-        backend:
-          service:
-            name: nexus-service
-            port:
-              number: 8081
-  # tls:  # 可选 - 启用 HTTPS
-  # - hosts:
-  #   - nexus.example.com
-  #   secretName: nexus-tls-secret
+# 原 Ingress 已迁移到 gateway/routes/tutorials-no-tls.yaml(nexus-demo)。
+# 删除原始 Ingress 块。
+#   host: nexus.example.com
+#   backend: nexus-service:8081
+# 备注:原 proxy-body-size=0 / timeout=600 在 Gateway API 无直接等价,
+# 已用 FIXME 标注于对应 HTTPRoute。

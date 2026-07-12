@@ -1,0 +1,36 @@
+# =============================================================================
+# harbor 命名空间 1 条 HTTPRoute
+# 原 nginx.ingress 注解:
+#   proxy-body-size: "0"       → Gateway API 无等价,需 EnvoyFilter
+#   proxy-read-timeout: "600"  → timeouts.backendRequest: 600s(已翻译)
+#   proxy-send-timeout: "600"  → 同上(Gateway API 不区分读写,合并到 backendRequest)
+# =============================================================================
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: harbor
+  namespace: harbor
+spec:
+  parentRefs:
+    - name: main-gateway
+      namespace: istio-system
+      sectionName: https
+  hostnames:
+    - "harbor.k8s"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      # 对应 nginx.ingress.kubernetes.io/proxy-read-timeout=600
+      timeouts:
+        backendRequest: 600s
+      backendRefs:
+        - name: harbor-nginx
+          port: 8080
+      # NOTE: 原 proxy-body-size=0(不限上传大小)。Istio gateway 默认不硬性
+      # 限制请求体,但 Harbor 镜像推送常 >1GiB,建议 apply
+      # gateway/patches/envoy-max-request-bytes.yaml 把 per-connection 缓冲
+      # 上限调大到 1GiB。详见 gateway/README.md。

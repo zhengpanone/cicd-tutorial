@@ -1,0 +1,47 @@
+# =============================================================================
+# elk 命名空间 2 条 HTTPRoute,共用 efk-tls(多 SAN 证书)
+# =============================================================================
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kibana
+  namespace: elk
+spec:
+  parentRefs:
+    - name: main-gateway
+      namespace: istio-system
+      sectionName: https
+  hostnames:
+    - "kibana.k8s"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: kibana
+          port: 5601
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: elasticsearch
+  namespace: elk
+spec:
+  parentRefs:
+    - name: main-gateway
+      namespace: istio-system
+      sectionName: https
+  hostnames:
+    - "elasticsearch.k8s"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: elasticsearch
+          port: 9200

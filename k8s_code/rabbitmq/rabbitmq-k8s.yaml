@@ -361,25 +361,9 @@ spec:
           requests:
             storage: 10Gi
 ---
-# 9. Ingress：通过域名访问管理界面
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: rabbitmq-ingress
-  namespace: default
-  annotations:
-    nginx.ingress.kubernetes.io/rewrite-target: /
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-spec:
-  ingressClassName: public # MicroK8s 使用 public
-  rules:
-    - host: rabbitmq.local
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: rabbitmq-service
-                port:
-                  number: 15672
+# 原 Ingress 已迁移到 gateway/routes/tutorials-no-tls.yaml(rabbitmq-demo)。
+# 删除原始 Ingress 块(ingressClassName: public 是 MicroK8s 标记,
+# Gateway API 不再需要)。
+#   host: rabbitmq.local
+#   backend: rabbitmq-service:15672
+#   rewrite-target: / → 翻译为 URLRewrite.ReplacePrefixMatch / → /(noop)

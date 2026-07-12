@@ -270,28 +270,9 @@ spec:
       name: http
 
 ---
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: kafka-ui
-  namespace: default
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - kafka-ui.k8s
-      secretName: default-tls
-  rules:
-    - host: kafka-ui.k8s
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: kafka-ui
-                port:
-                  number: 8080
+# 原 Ingress 已迁移到 gateway/routes/default-infra.yaml(kafka-ui)。
+# 删除原始 Ingress 块。
+#   namespace: default
+#   host: kafka-ui.k8s
+#   backend: kafka-ui:8080
+#   TLS: default-tls

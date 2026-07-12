@@ -1,0 +1,39 @@
+# =============================================================================
+# Let's Encrypt staging ClusterIssuer(集群级)
+#
+# ⚠️ 重要约束(必须看 README!):
+#   现有域名 `*.k8s` / `*.local` / `*.example.com` / `nexus.example.com`
+#   都不是真实可解析的 DNS 域名。LE staging 申请证书必须满足 HTTP-01
+#   challenge,所以这些占位 host 必须由用户替换成自己拥有/解析的真实域名,
+#   并且把 `*.<your-domain>` 通配 CNAME 到 istio-ingressgateway 的
+#   LoadBalancer 公网 IP。否则 Certificate 会永久 Pending。
+#
+# 申请对象是 Gateway API 时(本项目),cert-manager v1.14+ 可直接用 gateway
+# solver(http01 + gateway),无需创建临时 Ingress。本项目使用 gateway solver。
+# 旧版本(<v1.14)需要退回 http01 + ingress solver 并让 cert-manager 创建
+# 一个指向 nginx-ingress 的临时 Ingress。本迁移以 v1.14+ 为基准。
+# =============================================================================
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: letsencrypt-staging
+spec:
+  acme:
+    # LE staging endpoint(签发的证书浏览器默认不信任,适合测试)
+    server: https://acme-staging-v02.api.letsencrypt.org/directory
+    # TODO: 替换为你自己的真实邮箱(LE 会在证书快到期时发提醒)
+    # 当前为本地教学占位(LE 会 reject,仅作 deploy 前必须修改的标记)
+    email: admin@k8s.local
+    privateKeySecretRef:
+      name: letsencrypt-staging-account-key
+    solvers:
+      # http-01 + gateway:直接用 Gateway API 资源做 challenge
+      # 需要 cert-manager v1.14+,且集群已安装 Gateway API CRD
+      - http01:
+          gateway:
+            # 告诉 cert-manager HTTP-01 路由走哪个 GatewayClass
+            class: istio
+            # 选 namespace 后会让 cert-manager 在该 ns 自动创建临时 HTTPRoute
+            # 用于 /.well-known/acme-challenge/* 路径;留空表示由 Certificate
+            # 所在 ns 提供。

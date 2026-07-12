@@ -1,0 +1,126 @@
+# =============================================================================
+# ReferenceGrant:允许 istio-system 里的 Gateway 跨 ns 引用本 ns 里的 TLS Secret
+# 必须放在 Secret 所在 ns。
+#   from = 发起引用方(istio-system 的 Gateway),只能用 namespace,不能有 name
+#   to   = 被引用方(本 ns 的 Secret),用 name 精确到具体 Secret
+# 7 个 ns 一条,共 7 个 ReferenceGrant。
+# =============================================================================
+
+---
+# 1) web-app ns: web-app-tls
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-main-gateway
+  namespace: web-app
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: istio-system
+  to:
+    - group: ""
+      kind: Secret
+      name: web-app-tls
+
+---
+# 2) devops ns: devops-tls
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-main-gateway
+  namespace: devops
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: istio-system
+  to:
+    - group: ""
+      kind: Secret
+      name: devops-tls
+
+---
+# 3) default ns: default-tls
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-main-gateway
+  namespace: default
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: istio-system
+  to:
+    - group: ""
+      kind: Secret
+      name: default-tls
+
+---
+# 4) elk ns: efk-tls
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-main-gateway
+  namespace: elk
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: istio-system
+  to:
+    - group: ""
+      kind: Secret
+      name: efk-tls
+
+---
+# 5) harbor ns: harbor-tls
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-main-gateway
+  namespace: harbor
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: istio-system
+  to:
+    - group: ""
+      kind: Secret
+      name: harbor-tls
+
+---
+# 6) kubernetes-dashboard ns: headlamp-tls(infra-ingress.yaml 里那条)
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-main-gateway
+  namespace: kubernetes-dashboard
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: istio-system
+  to:
+    - group: ""
+      kind: Secret
+      name: headlamp-tls
+
+---
+# 7) headlamp ns: headlamp-tls(headlamp-k8s.yaml 里那条)
+apiVersion: gateway.networking.k8s.io/v1beta1
+kind: ReferenceGrant
+metadata:
+  name: allow-main-gateway
+  namespace: headlamp
+spec:
+  from:
+    - group: gateway.networking.k8s.io
+      kind: Gateway
+      namespace: istio-system
+  to:
+    - group: ""
+      kind: Secret
+      name: headlamp-tls

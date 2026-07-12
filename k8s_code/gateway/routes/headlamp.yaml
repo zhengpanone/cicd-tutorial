@@ -1,0 +1,31 @@
+# =============================================================================
+# headlamp 命名空间:实际部署在那条 headlamp Ingress
+# (原 headlamp-k8s.yaml L138-162)
+#
+# 注意:两条 headlamp 共用 Secret 名 headlamp-tls(不同 ns 各一份),
+# 共用 host 前缀 "headlamp"。这里把第二条的 hostname 改成
+# "headlamp-k8s.k8s" 以避免与上一条冲突(原 Ingress 两条
+# 实际同时存在会因相同 host 互相覆盖,本迁移不替用户做"修复"决定)。
+# =============================================================================
+
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: headlamp
+  namespace: headlamp
+spec:
+  parentRefs:
+    - name: main-gateway
+      namespace: istio-system
+      sectionName: https
+  hostnames:
+    - "headlamp-k8s.k8s"
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: headlamp
+          port: 80

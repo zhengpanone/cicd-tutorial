@@ -134,29 +134,9 @@ spec:
     app: headlamp
 
 ---
-# 7. Ingress - headlamp（通过 ingress-nginx 访问）
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: headlamp
-  namespace: headlamp
-  annotations:
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  tls:
-    - hosts:
-        - headlamp.k8s
-      secretName: headlamp-tls
-  rules:
-    - host: headlamp.k8s
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: headlamp
-                port:
-                  number: 80
+# 原 Ingress 已迁移到 gateway/routes/headlamp.yaml。
+# 删除原始 Ingress 块。
+#   namespace: headlamp
+#   host: headlamp.k8s
+#   backend: headlamp:80
+#   TLS: headlamp-tls

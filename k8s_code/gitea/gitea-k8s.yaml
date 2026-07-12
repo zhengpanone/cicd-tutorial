@@ -198,29 +198,3 @@ spec:
       protocol: TCP
       name: ssh
 
----
-# 7. Ingress - HTTP access through ingress-nginx
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: gitea
-  namespace: devops
-  annotations:
-    nginx.ingress.kubernetes.io/proxy-body-size: "0"
-    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
-    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
-    nginx.ingress.kubernetes.io/ssl-redirect: "false"
-    nginx.ingress.kubernetes.io/force-ssl-redirect: "false"
-spec:
-  ingressClassName: nginx
-  rules:
-    - host: gitea.k8s
-      http:
-        paths:
-          - path: /
-            pathType: Prefix
-            backend:
-              service:
-                name: gitea
-                port:
-                  number: 3000

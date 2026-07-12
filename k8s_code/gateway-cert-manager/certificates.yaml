@@ -1,0 +1,152 @@
+﻿# =============================================================================
+# Certificate resources for Gateway TLS.
+#
+# Notes:
+# - cert-manager CRDs must be installed before applying this file.
+# - The local .k8s names are suitable for a lab only. For ACME/Let's Encrypt,
+#   replace them with real DNS names that you control.
+# - Secret names match Gateway certificateRefs.
+# =============================================================================
+
+---
+# 1) web-app namespace: my-gin / my-express / my-springboot
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: web-app-tls
+  namespace: web-app
+spec:
+  secretName: web-app-tls
+  duration: 2160h
+  renewBefore: 720h
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "my-gin-app.k8s"
+    - "my-express-app.k8s"
+    - "my-springboot-app.k8s"
+
+---
+# 2) devops namespace: Jenkins and Gitea
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: devops-tls
+  namespace: devops
+spec:
+  secretName: devops-tls
+  duration: 2160h
+  renewBefore: 720h
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "jenkins.k8s"
+    - "gitea.k8s"
+
+---
+# 3) default namespace: infrastructure tools
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: default-tls
+  namespace: default
+spec:
+  secretName: default-tls
+  duration: 2160h
+  renewBefore: 720h
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "nacos.k8s"
+    - "consul.k8s"
+    - "rustfs.k8s"
+    - "prometheus.k8s"
+    - "jaeger.k8s"
+    - "sentinel.k8s"
+    - "minio.k8s"
+    - "rocketmq.k8s"
+    - "redisinsight.k8s"
+    - "emqx.k8s"
+    - "attu.k8s"
+    - "grafana.k8s"
+    - "loki.k8s"
+    - "kafka-ui.k8s"
+
+---
+# 4) elk namespace: Kibana and Elasticsearch
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: efk-tls
+  namespace: elk
+spec:
+  secretName: efk-tls
+  duration: 2160h
+  renewBefore: 720h
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "kibana.k8s"
+    - "elasticsearch.k8s"
+
+---
+# 5) harbor namespace
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: harbor-tls
+  namespace: harbor
+spec:
+  secretName: harbor-tls
+  duration: 2160h
+  renewBefore: 720h
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "harbor.k8s"
+
+---
+# 6) kubernetes-dashboard namespace: legacy Headlamp route
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: headlamp-tls
+  namespace: kubernetes-dashboard
+spec:
+  secretName: headlamp-tls
+  duration: 2160h
+  renewBefore: 720h
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "headlamp.k8s"
+
+---
+# 7) headlamp namespace
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: headlamp-tls
+  namespace: headlamp
+spec:
+  secretName: headlamp-tls
+  duration: 2160h
+  renewBefore: 720h
+  issuerRef:
+    name: letsencrypt-staging
+    kind: ClusterIssuer
+    group: cert-manager.io
+  dnsNames:
+    - "headlamp-k8s.k8s"

@@ -1,0 +1,65 @@
+# =============================================================================
+# EnvoyFilter:放开 istio-ingressgateway 的请求体缓冲上限
+#
+# 背景:
+#   原 nginx-ingress 用 `nginx.ingress.kubernetes.io/proxy-body-size: "0"`
+#   表示"不限制上传大小",影响 harbor(镜像推送)、gitea(git push)、
+#   nexus(制品上传)。Gateway API 没有对应字段。
+#
+#   实际上 Istio ingress gateway 默认对请求体大小【不做硬性限制】(流式转发
+#   不受缓冲上限约束)。真正可能截断大上传的是 per-connection 缓冲上限
+#   (默认 1MiB)——当上游需要完整缓冲请求(如某些 gRPC/HTTP2 场景)时才生效。
+#   本 EnvoyFilter 把该上限调大到 1GiB,覆盖 http(80) 与 https(443) 两个
+#   listener,保证 harbor/gitea/nexus 的大文件上传稳定。
+#
+# 使用:
+#   kubectl apply -f gateway/patches/envoy-max-request-bytes.yaml
+# 验证:
+#   istioctl proxy-config listener deploy/istio-ingressgateway -n istio-system
+# =============================================================================
+
+---
+# 调大 http(80) listener 的 per-connection 缓冲上限(gitea / nexus)
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: max-request-bytes-http
+  namespace: istio-system
+spec:
+  workloadSelector:
+    labels:
+      # ⚠️ 按你的 ingressgateway 实际 label 调整
+      # `kubectl get pods -n istio-system --show-labels | grep gateway`
+      istio: ingressgateway
+  configPatches:
+    - applyTo: LISTENER
+      match:
+        context: GATEWAY
+        listener:
+          portNumber: 80
+      patch:
+        operation: MERGE
+        value:
+          per_connection_buffer_limit_bytes: 1073741824 # 1 GiB
+
+---
+# 调大 https(443) listener 的 per-connection 缓冲上限(harbor)
+apiVersion: networking.istio.io/v1alpha3
+kind: EnvoyFilter
+metadata:
+  name: max-request-bytes-https
+  namespace: istio-system
+spec:
+  workloadSelector:
+    labels:
+      istio: ingressgateway
+  configPatches:
+    - applyTo: LISTENER
+      match:
+        context: GATEWAY
+        listener:
+          portNumber: 443
+      patch:
+        operation: MERGE
+        value:
+          per_connection_buffer_limit_bytes: 1073741824 # 1 GiB
