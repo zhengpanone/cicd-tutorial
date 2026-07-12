@@ -84,6 +84,6 @@ kubectl create secret tls web-app-tls \
 | `Certificate/default-tls` (自签) | 用 LE staging 重新签 |
 | `Certificate/efk-tls` (自签) | 用 LE staging 重新签 |
 | `Certificate/harbor-tls` (自签) | 用 LE staging 重新签 |
-| `Certificate/headlamp-tls` (自签) | 用 LE staging 重新签(2 份,kubernetes-dashboard + headlamp) |
+| `Certificate/headlamp-tls` (自签) | 在 headlamp namespace 中用 LE staging 重新签 |
 
 `scripts/cleanup-old-ingress.sh` 会一并删除整个 `ingress-nginx/cert-manager/` 目录。

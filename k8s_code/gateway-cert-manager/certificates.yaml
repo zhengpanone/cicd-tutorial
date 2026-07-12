@@ -116,25 +116,7 @@ spec:
     - "harbor.k8s"
 
 ---
-# 6) kubernetes-dashboard namespace: legacy Headlamp route
-apiVersion: cert-manager.io/v1
-kind: Certificate
-metadata:
-  name: headlamp-tls
-  namespace: kubernetes-dashboard
-spec:
-  secretName: headlamp-tls
-  duration: 2160h
-  renewBefore: 720h
-  issuerRef:
-    name: letsencrypt-staging
-    kind: ClusterIssuer
-    group: cert-manager.io
-  dnsNames:
-    - "headlamp.k8s"
-
----
-# 7) headlamp namespace
+# 6) headlamp namespace
 apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
@@ -149,4 +131,4 @@ spec:
     kind: ClusterIssuer
     group: cert-manager.io
   dnsNames:
-    - "headlamp-k8s.k8s"
+    - "headlamp.k8s"

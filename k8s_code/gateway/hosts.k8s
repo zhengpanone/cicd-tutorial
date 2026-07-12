@@ -1,5 +1,5 @@
 # =============================================================================
-# 本地 hosts 映射清单(28 个 host,对应 gateway/routes/ 全部 HTTPRoute)
+# 本地 hosts 映射清单(27 个 host,对应 gateway/routes/ 全部 HTTPRoute)
 #
 # 用途:本地测试时把这些 *.k8s 域名解析到 istio-ingressgateway。
 #   - Docker Desktop:通常是 127.0.0.1
@@ -49,9 +49,8 @@
 # ── harbor namespace ───────────────────────────────────────────────
 127.0.0.1 harbor.k8s
 
-# ── kubernetes-dashboard / headlamp namespace ──────────────────────
+# ── headlamp namespace ─────────────────────────────────────────────
 127.0.0.1 headlamp.k8s
-127.0.0.1 headlamp-k8s.k8s
 
 # ── 无 TLS 演示(http listener)─────────────────────────────────────
 127.0.0.1 nginx.k8s

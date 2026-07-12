@@ -1,6 +1,6 @@
 ﻿# =============================================================================
 # devops routes through main-gateway.
-# jenkins: HTTPS only.
+# jenkins: HTTP and HTTPS.
 # gitea: HTTP and HTTPS.
 # =============================================================================
 
@@ -12,6 +12,9 @@ metadata:
   namespace: devops
 spec:
   parentRefs:
+    - name: main-gateway
+      namespace: istio-system
+      sectionName: http
     - name: main-gateway
       namespace: istio-system
       sectionName: https

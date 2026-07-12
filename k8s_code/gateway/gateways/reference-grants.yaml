@@ -3,7 +3,7 @@
 # 必须放在 Secret 所在 ns。
 #   from = 发起引用方(istio-system 的 Gateway),只能用 namespace,不能有 name
 #   to   = 被引用方(本 ns 的 Secret),用 name 精确到具体 Secret
-# 7 个 ns 一条,共 7 个 ReferenceGrant。
+# 6 个 ns 一条,共 6 个 ReferenceGrant。
 # =============================================================================
 
 ---
@@ -92,24 +92,7 @@ spec:
       name: harbor-tls
 
 ---
-# 6) kubernetes-dashboard ns: headlamp-tls(infra-ingress.yaml 里那条)
-apiVersion: gateway.networking.k8s.io/v1beta1
-kind: ReferenceGrant
-metadata:
-  name: allow-main-gateway
-  namespace: kubernetes-dashboard
-spec:
-  from:
-    - group: gateway.networking.k8s.io
-      kind: Gateway
-      namespace: istio-system
-  to:
-    - group: ""
-      kind: Secret
-      name: headlamp-tls
-
----
-# 7) headlamp ns: headlamp-tls(headlamp-k8s.yaml 里那条)
+# 6) headlamp ns: headlamp-tls
 apiVersion: gateway.networking.k8s.io/v1beta1
 kind: ReferenceGrant
 metadata:

@@ -8,22 +8,21 @@
 gateway/
 ├── gateways/
 │   ├── main-gateway.yaml       # 1 个 Gateway 资源(istio-system),HTTP+HTTPS listener
-│   └── reference-grants.yaml   # 7 个 ReferenceGrant,授权跨 ns 引用 TLS Secret
+│   └── reference-grants.yaml   # 6 个 ReferenceGrant,授权跨 ns 引用 TLS Secret
 ├── routes/
 │   ├── web-app.yaml                # 3 条 HTTPRoute(原 web-app-ingress.yaml)
 │   ├── devops.yaml                 # 2 条(jenkins, gitea)
 │   ├── default-infra.yaml          # 14 条(default ns 13 + kafka-ui)
 │   ├── elk.yaml                    # 2 条(kibana, elasticsearch)
 │   ├── harbor.yaml                 # 1 条(含 backendRequest=600s)
-│   ├── kubernetes-dashboard.yaml   # 1 条 headlamp(该 namespace 的历史 Ingress)
 │   ├── headlamp.yaml               # 1 条 headlamp(headlamp ns 的实际部署)
 │   └── tutorials-no-tls.yaml       # 4 条无 TLS 演示(nginx/rabbitmq/nexus/test)
 ├── patches/
 │   └── envoy-max-request-bytes.yaml  # 放开大文件上传缓冲上限(harbor/gitea/nexus)
-└── hosts.k8s                       # 28 个 host 的本地 hosts 映射清单
+└── hosts.k8s                       # 27 个 host 的本地 hosts 映射清单
 ```
 
-合计 **28 条 HTTPRoute**,与原 28 条 Ingress 一一对齐(web-app 两份冗余副本合并、headlamp 完整保留 2 条)。
+合计 **27 条 HTTPRoute**。web-app 的重复声明已合并，Headlamp 仅保留 `headlamp` namespace 中的实际部署。
 
 ## 2. 前置依赖
 
@@ -130,9 +129,9 @@ istioctl proxy-config listener deploy/istio-ingressgateway -n istio-system
 
 避免 Gateway API 缺乏"仅根路径匹配"语法导致误伤其它子路径。
 
-## 6. 历史包袱(用户需决定是否修复)
+## 6. 迁移说明
 
-- **两条 headlamp 共存**:原 `infra-ingress.yaml` 声明 `namespace: kubernetes-dashboard`,但实际 Deployment/Service 在 `headlamp` namespace。两份 Ingress 共用 Secret 名 `headlamp-tls`(各自 ns 一份)。本迁移完整保留为两条 HTTPRoute(`gateway/routes/kubernetes-dashboard.yaml` 与 `gateway/routes/headlamp.yaml`),host 第二个改为 `headlamp-k8s.k8s` 以避免冲突。要收敛到一份由用户自行决定。
+- **Headlamp 路由已收敛**:已移除 `kubernetes-dashboard` namespace 中没有实际后端的历史路由，仅保留 `headlamp` namespace 中的部署，访问域名为 `headlamp.k8s`。
 - **web-app 路由冗余**:原 `web-app-ingress.yaml`(顶层)与 `ingress-nginx/web-app-ingress/web-app-ingress.yaml` 是同一份路由的重复声明。迁移后只在 `gateway/routes/web-app.yaml` 保留一份。
 - **`ingress-nginx` Controller 目录**:保留 `ingress-nginx/ingress-nginx/` 的 Controller 部署相关文件(本迁移不卸载),若已完全切换到 Istio,可后续单独删除。
 
@@ -154,9 +153,9 @@ git checkout HEAD -- web-app-ingress.yaml infra-ingress.yaml k8s_demo/ingress.ya
 ```bash
 # 资源数量
 kubectl get gateway -n istio-system                  # 1
-kubectl get referencegrant -A | wc -l               # 7
-kubectl get httproute -A | wc -l                    # 28
-kubectl get certificate -A | wc -l                  # 7
+kubectl get referencegrant -A | wc -l               # 6
+kubectl get httproute -A | wc -l                    # 27
+kubectl get certificate -A | wc -l                  # 6
 
 # Ingress 残留检查
 grep -rn "^kind: Ingress$" k8s_code/                # 应为 0(除已注释的)
