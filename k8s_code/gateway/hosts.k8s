@@ -1,5 +1,5 @@
 # =============================================================================
-# 本地 hosts 映射清单(27 个 host,对应 gateway/routes/ 全部 HTTPRoute)
+# 本地 hosts 映射清单(27 个 host,对应各服务清单内的 HTTPRoute)
 #
 # 用途:本地测试时把这些 *.k8s 域名解析到 istio-ingressgateway。
 #   - Docker Desktop:通常是 127.0.0.1

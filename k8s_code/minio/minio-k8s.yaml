@@ -140,3 +140,27 @@ spec:
       targetPort: 9001
       nodePort: 30901 # 30000-32767
       name: console
+
+---
+# Gateway API HTTPRoute: minio
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: minio
+  namespace: default
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: https
+  hostnames:
+  - minio.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: minio
+      port: 9001

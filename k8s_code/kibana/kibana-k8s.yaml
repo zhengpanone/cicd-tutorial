@@ -75,3 +75,27 @@ spec:
       nodePort: 30561
       protocol: TCP
       name: http
+
+---
+# Gateway API HTTPRoute: kibana
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kibana
+  namespace: elk
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: https
+  hostnames:
+  - kibana.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: kibana
+      port: 5601

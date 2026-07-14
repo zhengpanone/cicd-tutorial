@@ -299,9 +299,33 @@ spec:
     name: docker-proxy
 
 ---
-# 原 Ingress 已迁移到 gateway/routes/tutorials-no-tls.yaml(nexus-demo)。
-# 删除原始 Ingress 块。
+# 原 Ingress 已迁移为本清单末尾的 HTTPRoute(nexus-demo)。
+# 原始 Ingress 块已删除。
 #   host: nexus.example.com
 #   backend: nexus-service:8081
 # 备注:原 proxy-body-size=0 / timeout=600 在 Gateway API 无直接等价,
-# 已用 FIXME 标注于对应 HTTPRoute。
+# 对应 HTTPRoute 与可选 EnvoyFilter 已保留相关配置。
+
+---
+# Gateway API HTTPRoute: nexus-demo
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: nexus-demo
+  namespace: default
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: http
+  hostnames:
+  - nexus.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: nexus-service
+      port: 8081

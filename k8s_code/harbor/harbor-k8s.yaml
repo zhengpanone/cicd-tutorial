@@ -185,7 +185,7 @@ data:
     [prod]
     httpport = 8080
   env: |
-    EXT_ENDPOINT=http://harbor.k8s
+    EXT_ENDPOINT=https://harbor.k8s:18443
     DATABASE_TYPE=postgresql
     POSTGRESQL_HOST=harbor-database-headless.harbor.svc.cluster.local
     POSTGRESQL_PORT=5432
@@ -367,7 +367,7 @@ data:
     auth:
       token:
         issuer: harbor-token-issuer
-        realm: https://harbor.k8s/service/token
+        realm: https://harbor.k8s:18443/service/token
         rootcertbundle: /etc/registry/root.crt
         service: harbor-registry
     validation:
@@ -1040,7 +1040,7 @@ spec:
               name: http
           env:
             - name: EXT_ENDPOINT
-              value: http://harbor.k8s
+              value: https://harbor.k8s:18443
             - name: DATABASE_TYPE
               value: postgresql
             - name: POSTGRESQL_HOST
@@ -1375,3 +1375,29 @@ spec:
       name: http
   selector:
     app: harbor-nginx
+
+---
+# Gateway API HTTPRoute: harbor
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: harbor
+  namespace: harbor
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: https
+  hostnames:
+  - harbor.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    timeouts:
+      backendRequest: 600s
+    backendRefs:
+    - name: harbor-nginx
+      port: 8080

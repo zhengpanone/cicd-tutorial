@@ -361,9 +361,39 @@ spec:
           requests:
             storage: 10Gi
 ---
-# 原 Ingress 已迁移到 gateway/routes/tutorials-no-tls.yaml(rabbitmq-demo)。
-# 删除原始 Ingress 块(ingressClassName: public 是 MicroK8s 标记,
+# 原 Ingress 已迁移为本清单末尾的 HTTPRoute(rabbitmq-demo)。
+# 原始 Ingress 块已删除(ingressClassName: public 是 MicroK8s 标记,
 # Gateway API 不再需要)。
 #   host: rabbitmq.local
 #   backend: rabbitmq-service:15672
 #   rewrite-target: / → 翻译为 URLRewrite.ReplacePrefixMatch / → /(noop)
+
+---
+# Gateway API HTTPRoute: rabbitmq-demo
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: rabbitmq-demo
+  namespace: default
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: http
+  hostnames:
+  - rabbitmq.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    filters:
+    - type: URLRewrite
+      urlRewrite:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /
+    backendRefs:
+    - name: rabbitmq-service
+      port: 15672

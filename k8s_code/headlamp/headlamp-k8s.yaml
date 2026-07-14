@@ -134,9 +134,33 @@ spec:
     app: headlamp
 
 ---
-# 原 Ingress 已迁移到 gateway/routes/headlamp.yaml。
-# 删除原始 Ingress 块。
+# 原 Ingress 已迁移为本清单末尾的 HTTPRoute。
+# 原始 Ingress 块已删除。
 #   namespace: headlamp
 #   host: headlamp.k8s
 #   backend: headlamp:80
 #   TLS: headlamp-tls
+
+---
+# Gateway API HTTPRoute: headlamp
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: headlamp
+  namespace: headlamp
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: https
+  hostnames:
+  - headlamp.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: headlamp
+      port: 80

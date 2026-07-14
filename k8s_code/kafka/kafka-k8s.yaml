@@ -270,9 +270,33 @@ spec:
       name: http
 
 ---
-# 原 Ingress 已迁移到 gateway/routes/default-infra.yaml(kafka-ui)。
-# 删除原始 Ingress 块。
+# 原 Ingress 已迁移为本清单末尾的 HTTPRoute(kafka-ui)。
+# 原始 Ingress 块已删除。
 #   namespace: default
 #   host: kafka-ui.k8s
 #   backend: kafka-ui:8080
 #   TLS: default-tls
+
+---
+# Gateway API HTTPRoute: kafka-ui
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: kafka-ui
+  namespace: default
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: https
+  hostnames:
+  - kafka-ui.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: kafka-ui
+      port: 8080

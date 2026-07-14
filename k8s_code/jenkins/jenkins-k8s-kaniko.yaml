@@ -496,3 +496,30 @@ subjects:
   - kind: ServiceAccount
     name: jenkins
     namespace: devops
+
+---
+# Gateway API HTTPRoute: jenkins
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: jenkins
+  namespace: devops
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: http
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: https
+  hostnames:
+  - jenkins.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: jenkins-service-nodeport
+      port: 8080

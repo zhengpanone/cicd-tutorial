@@ -60,3 +60,27 @@ spec:
       nodePort: 30003
       protocol: TCP
 
+
+---
+# Gateway API HTTPRoute: my-gin-app
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: my-gin-app
+  namespace: web-app
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: https
+  hostnames:
+  - my-gin-app.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: my-gin-app
+      port: 8080

@@ -79,7 +79,7 @@ kubectl config current-context
 127.0.0.1 harbor.k8s
 ```
 
-5. **Ingress Controller**：nginx-ingress 已部署，端口 18080(HTTP) / 18443(HTTPS)
+5. **Gateway API**：Istio `main-gateway` 已部署，端口 18080(HTTP) / 18443(HTTPS)
 
 ## 部署
 
@@ -245,15 +245,15 @@ Pod 内已配置 `wait-for-database` 和 `wait-for-redis` initContainer，正常
 
 ### 镜像推送失败 413 Request Entity Too Large
 
-Ingress 的 `proxy-body-size` 必须设为 `"0"`（无限制），否则推送大镜像会报 413。确认 infra-ingress.yaml 中 Harbor 的 Ingress 注解包含：
+应用 Gateway 的大文件上传补丁，并确认其中匹配 `18443` listener：
 
-```yaml
-nginx.ingress.kubernetes.io/proxy-body-size: "0"
+```powershell
+kubectl apply -f .\k8s_code\gateway\patches\envoy-max-request-bytes.yaml
 ```
 
 ### 推送镜像报 unauthorized
 
-确认 `EXT_ENDPOINT` 与实际访问 URL 一致。如果使用 `https://harbor.k8s` 作为 EXT_ENDPOINT，则 Docker CLI 必须用 `docker login harbor.k8s`（不带端口号）。如果通过 NodePort 访问，EXT_ENDPOINT 需要包含端口号。
+确认 `EXT_ENDPOINT` 与实际访问 URL 一致。当前值为 `https://harbor.k8s:18443`，Docker CLI 应使用 `docker login harbor.k8s:18443`。
 
 ### harbor-database 启动失败 - 权限问题
 

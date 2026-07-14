@@ -534,7 +534,30 @@ spec:
     name: http
 
 ---
-# 原 Ingress 已迁移到 gateway/routes/tutorials-no-tls.yaml(nginx-demo),
-# 在此保留注释以便审计。删除原始 Ingress 块。
+# 原 Ingress 已迁移为本清单末尾的 HTTPRoute(nginx-demo),
+# 在此保留注释以便审计。原始 Ingress 块已删除。
 #   host: nginx.local
-#   backend: nginx-service:80
+
+---
+# Gateway API HTTPRoute: nginx-demo
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: nginx-demo
+  namespace: default
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: http
+  hostnames:
+  - nginx.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: nginx-service
+      port: 80

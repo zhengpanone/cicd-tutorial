@@ -405,3 +405,41 @@ spec:
     nodePort: 31848
     protocol: TCP
     name: grpc
+
+---
+# Gateway API HTTPRoute: nacos
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: nacos
+  namespace: default
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: https
+  hostnames:
+  - nacos.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    filters:
+    - type: RequestRedirect
+      requestRedirect:
+        path:
+          type: ReplacePrefixMatch
+          replacePrefixMatch: /nacos/
+        statusCode: 308
+    backendRefs:
+    - name: nacos-service-nodeport
+      port: 8848
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /nacos
+    backendRefs:
+    - name: nacos-service-nodeport
+      port: 8848

@@ -141,3 +141,27 @@ spec:
     nodePort: 30600  # 改为 30000-32767 范围内
     name: dns
     protocol: UDP
+
+---
+# Gateway API HTTPRoute: consul
+# Shared listener ports: HTTP 18080, HTTPS 18443.
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: consul
+  namespace: default
+spec:
+  parentRefs:
+  - name: main-gateway
+    namespace: istio-system
+    sectionName: https
+  hostnames:
+  - consul.k8s
+  rules:
+  - matches:
+    - path:
+        type: PathPrefix
+        value: /
+    backendRefs:
+    - name: consul-service
+      port: 8500
