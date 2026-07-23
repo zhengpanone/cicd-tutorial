@@ -1,9 +1,12 @@
+---
+# 1. 创建 PersistentVolume (PV)
 apiVersion: v1
 kind: PersistentVolume
 metadata:
-  name: rustfs-pv
+  name: rustfs-data-pv
   labels:
     app: rustfs
+    volume: data
 spec:
   capacity:
     storage: 5Gi
@@ -14,29 +17,81 @@ spec:
   hostPath:
     path: /run/desktop/mnt/host/e/dockerstore/rustfs/data
     type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - docker-desktop
 ---
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: rustfs-logs-pv
+  labels:
+    app: rustfs
+    volume: logs
+spec:
+  capacity:
+    storage: 1Gi
+  accessModes:
+    - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: manual
+  hostPath:
+    path: /run/desktop/mnt/host/e/dockerstore/rustfs/logs
+    type: DirectoryOrCreate  
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+      - matchExpressions:
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - docker-desktop  
+---
+# 2. 创建 PersistentVolumeClaim (PVC)
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
-  name: rustfs-pvc
-  labels:
-    app: rustfs
+  name: rustfs-data-pvc
+  namespace: default
 spec:
   accessModes:
     - ReadWriteOnce
   storageClassName: manual
-  volumeName: rustfs-pv
   resources:
     requests:
       storage: 5Gi
-  selector:                  # 加这里
+  selector:
     matchLabels:
       app: rustfs
+      volume: data
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: rustfs-logs-pvc
+  namespace: default
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: manual
+  resources:
+    requests:
+      storage: 1Gi
+  selector:
+    matchLabels:
+      app: rustfs
+      volume: logs
 ---
 apiVersion: v1
 kind: Secret
 metadata:
   name: rustfs-secret
+  namespace: default
 type: Opaque
 stringData:
   RUSTFS_ACCESS_KEY: "rustfsadmin"
@@ -50,6 +105,8 @@ metadata:
     app: rustfs
 spec:
   replicas: 1
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       app: rustfs
@@ -58,6 +115,7 @@ spec:
       labels:
         app: rustfs
     spec:
+      terminationGracePeriodSeconds: 60
       containers:
         - name: rustfs
           image: rustfs/rustfs:latest
@@ -90,48 +148,50 @@ spec:
               value: "true"
             - name: RUSTFS_ALLOW_INSECURE_DEFAULT_CREDENTIALS
               value: "true"
-
           livenessProbe:
             exec:
               command:
                 - sh
                 - -c
-                - curl -f http://localhost:9000/health && curl -f http://localhost:9001/health
+                - curl -f http://localhost:9000/health
             initialDelaySeconds: 40
             periodSeconds: 30
             timeoutSeconds: 10
             failureThreshold: 3
-
           readinessProbe:
             exec:
               command:
                 - sh
                 - -c
-                - curl -f http://localhost:9000/health && curl -f http://localhost:9001/health
+                - curl -f http://localhost:9000/health
             initialDelaySeconds: 20
             periodSeconds: 15
             timeoutSeconds: 5
             failureThreshold: 3
-
-
           volumeMounts:
             - name: rustfs-data
               mountPath: /data
             - name: rustfs-logs
               mountPath: /logs
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1000m"
       volumes:
         - name: rustfs-data
           persistentVolumeClaim:
-            claimName: rustfs-pvc
+            claimName: rustfs-data-pvc
         - name: rustfs-logs
-          hostPath:
-            path: /run/desktop/mnt/host/e/dockerstore/rustfs/logs
-            type: DirectoryOrCreate
+          persistentVolumeClaim:
+            claimName: rustfs-logs-pvc
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  name: rustfs
+  name: rustfs-service
   labels:
     app: rustfs
 spec:
@@ -149,27 +209,52 @@ spec:
       targetPort: 9001
       nodePort: 31901
       protocol: TCP
-
 ---
-# Gateway API HTTPRoute: rustfs
-# Shared listener ports: HTTP 18080, HTTPS 18443.
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:
-  name: rustfs
+  name: rustfs-console
   namespace: default
 spec:
   parentRefs:
-  - name: main-gateway
-    namespace: istio-system
-    sectionName: https
+    - name: main-gateway
+      namespace: istio-system
+      sectionName: http
+    - name: main-gateway
+      namespace: istio-system
+      sectionName: https
   hostnames:
-  - rustfs.k8s
+    - console.rustfs.k8s
   rules:
-  - matches:
-    - path:
-        type: PathPrefix
-        value: /
-    backendRefs:
-    - name: rustfs
-      port: 9001
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+      backendRefs:
+        - name: rustfs-service
+          port: 9001
+---
+apiVersion: gateway.networking.k8s.io/v1
+kind: HTTPRoute
+metadata:
+  name: rustfs-api
+  namespace: default
+spec:
+  parentRefs:
+    - name: main-gateway
+      namespace: istio-system
+      sectionName: http
+    - name: main-gateway
+      namespace: istio-system
+      sectionName: https
+  hostnames:
+    - s3.rustfs.k8s
+  rules:
+    - matches:
+        - path:
+            type: PathPrefix
+            value: /
+
+      backendRefs:
+        - name: rustfs-service
+          port: 9000
