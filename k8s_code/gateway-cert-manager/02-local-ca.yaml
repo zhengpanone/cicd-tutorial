@@ -1,0 +1,20 @@
+# Root CA used by the local Gateway TLS certificate.
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: local-k8s-ca
+  namespace: cert-manager
+spec:
+  isCA: true
+  commonName: cicd-tutorial-local-ca
+  secretName: local-k8s-ca
+  duration: 87600h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: local-self-signed
+    kind: ClusterIssuer
+    group: cert-manager.io

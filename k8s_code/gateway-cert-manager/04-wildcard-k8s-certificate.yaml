@@ -1,0 +1,26 @@
+# One certificate is enough for the shared Gateway listener.
+# The wildcard covers every one-label host in gateway/hosts.k8s.
+
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: gateway-tls
+  namespace: istio-system
+spec:
+  secretName: gateway-tls
+  commonName: "*.k8s"
+  dnsNames:
+    - "*.k8s"
+  duration: 8760h
+  renewBefore: 720h
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  usages:
+    - digital signature
+    - key encipherment
+    - server auth
+  issuerRef:
+    name: local-k8s-ca-issuer
+    kind: ClusterIssuer
+    group: cert-manager.io

@@ -31,6 +31,6 @@ kubectl apply -f web-app-ingress.yaml
 ## 访问
 
 ```bash
-curl http://gin.k8s:18080
-curl -k https://gin.k8s:18443
+curl http://gin.k8s:28080
+curl -k https://gin.k8s:28443
 ```

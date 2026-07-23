@@ -422,24 +422,24 @@ spec:
   hostnames:
   - nacos.k8s
   rules:
+  # 1. / 请求重定向到 /nacos/
   - matches:
     - path:
-        type: PathPrefix
+        type: Exact
         value: /
     filters:
-    - type: RequestRedirect
-      requestRedirect:
-        path:
-          type: ReplacePrefixMatch
-          replacePrefixMatch: /nacos/
-        statusCode: 308
-    backendRefs:
-    - name: nacos-service-nodeport
-      port: 8848
+      - type: RequestRedirect
+        requestRedirect:
+          path:
+            type: ReplaceFullPath
+            replaceFullPath: /nacos/
+          statusCode: 302
+
+  # 2. /nacos/ 请求转发给 Nacos
   - matches:
     - path:
         type: PathPrefix
-        value: /nacos
+        value: /nacos/
     backendRefs:
-    - name: nacos-service-nodeport
-      port: 8848
+      - name: nacos-service-nodeport
+        port: 8848

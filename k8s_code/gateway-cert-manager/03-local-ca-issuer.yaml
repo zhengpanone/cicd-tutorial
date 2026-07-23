@@ -1,0 +1,9 @@
+# Cluster-wide issuer backed by the local CA secret in cert-manager.
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: local-k8s-ca-issuer
+spec:
+  ca:
+    secretName: local-k8s-ca

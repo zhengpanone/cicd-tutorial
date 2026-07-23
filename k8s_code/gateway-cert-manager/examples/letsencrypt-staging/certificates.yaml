@@ -1,11 +1,12 @@
 ﻿# =============================================================================
-# Certificate resources for Gateway TLS.
+# Optional per-namespace Certificate resources for a real-domain ACME setup.
+# The default local Gateway setup uses 04-wildcard-k8s-certificate.yaml instead.
 #
 # Notes:
-# - cert-manager CRDs must be installed before applying this file.
-# - The local .k8s names are suitable for a lab only. For ACME/Let's Encrypt,
-#   replace them with real DNS names that you control.
-# - Secret names match Gateway certificateRefs.
+# - cert-manager CRDs and cluster-issuer.yaml must be installed first.
+# - Replace every .k8s name with a real DNS name that you control before use.
+# - These per-namespace secrets are optional and are not used by the local
+#   wildcard Gateway certificate.
 # =============================================================================
 
 ---

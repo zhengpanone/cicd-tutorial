@@ -4,17 +4,17 @@
 
 ## 背景
 
-Docker Desktop Kubernetes 通过 LoadBalancer Service 将端口转发到 Windows 宿主机。当 80 端口已被其他服务占用时，需要将 Ingress Controller 的对外端口改为 18080（HTTP）和 18443（HTTPS）。
+Docker Desktop Kubernetes 通过 LoadBalancer Service 将端口转发到 Windows 宿主机。当 80 端口已被其他服务占用时，需要将 Ingress Controller 的对外端口改为 28080（HTTP）和 28443（HTTPS）。
 
 ## 修改内容
 
-`nginx-port-patch.yaml` 将 ingress-nginx-controller Service 的端口从默认的 80/443 改为 18080/18443：
+`nginx-port-patch.yaml` 将 ingress-nginx-controller Service 的端口从默认的 80/443 改为 28080/28443：
 
 ```yaml
 ports:
-  - port: 18080    # HTTP（原 80）
+  - port: 28080    # HTTP（原 80）
     targetPort: http
-  - port: 18443    # HTTPS（原 443）
+  - port: 28443    # HTTPS（原 443）
     targetPort: https
 ```
 

@@ -1,6 +1,6 @@
 # =============================================================================
-# ingress-nginx 端口配置：Service 使用 18080/18443（宿主机 80 端口被占用）
-# 解决 Docker Desktop 不转发 hostPort 18443 的问题
+# ingress-nginx 端口配置：Service 使用 28080/28443（宿主机 80 端口被占用）
+# 解决 Docker Desktop 不转发 hostPort 28443 的问题
 #
 # 使用方式（两步）：
 #   kubectl apply -f nginx-port-patch.yaml
@@ -8,7 +8,7 @@
 #     -p='[{"op":"replace","path":"/spec/template/spec/containers/0/ports","value":[{"containerPort":80,"name":"http","protocol":"TCP"},{"containerPort":443,"name":"https","protocol":"TCP"},{"containerPort":8443,"name":"webhook","protocol":"TCP"}]}]'
 # =============================================================================
 
-# 更新 Service 端口为 18080 (HTTP) / 18443 (HTTPS)
+# 更新 Service 端口为 28080 (HTTP) / 28443 (HTTPS)
 apiVersion: v1
 kind: Service
 metadata:
@@ -24,11 +24,11 @@ spec:
   ports:
     - appProtocol: http
       name: http
-      port: 18080
+      port: 28080
       targetPort: http
       protocol: TCP
     - appProtocol: https
       name: https
-      port: 18443
+      port: 28443
       targetPort: https
       protocol: TCP

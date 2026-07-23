@@ -1,0 +1,9 @@
+# Bootstrap issuer for the local CA chain.
+# This issuer must only be used to sign the CA certificate in 02-local-ca.yaml.
+
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: local-self-signed
+spec:
+  selfSigned: {}

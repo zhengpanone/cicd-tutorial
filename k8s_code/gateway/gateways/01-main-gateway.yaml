@@ -29,8 +29,7 @@ spec:
         mode: Terminate
         certificateRefs:
           - kind: Secret
-            name: devops-tls
-            namespace: devops
+            name: gateway-tls
       allowedRoutes:
         namespaces:
           from: All

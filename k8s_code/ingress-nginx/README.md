@@ -12,7 +12,7 @@ ingress-nginx/
 │   └── tls-resources.yaml       ← ClusterIssuer + 各命名空间证书
 ├── ingress-nginx/               ← Ingress Controller 配置
 │   ├── README.md
-│   └── nginx-port-patch.yaml    ← Service 端口补丁（18080/18443）
+│   └── nginx-port-patch.yaml    ← Service 端口补丁（28080/28443）
 └── web-app-ingress/             ← Web 应用路由
     ├── README.md
     └── web-app-ingress.yaml     ← gin / express / springboot Ingress
@@ -42,8 +42,8 @@ kubectl apply -f ../infra-ingress.yaml
 
 | 端口 | 协议 | 示例 |
 |------|------|------|
-| 18080 | HTTP | `http://gin.k8s:18080` |
-| 18443 | HTTPS | `https://gin.k8s:18443` |
+| 28080 | HTTP | `http://gin.k8s:28080` |
+| 28443 | HTTPS | `https://gin.k8s:28443` |
 
 ## 新增服务
 
