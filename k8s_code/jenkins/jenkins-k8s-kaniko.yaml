@@ -213,6 +213,35 @@ stringData:
     }
 
 ---
+# In-cluster kubeconfig for kubectl sidecar.
+# Uses the auto-mounted ServiceAccount token (jenkins SA + ClusterRoleBinding).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: jenkins-kubeconfig
+  namespace: devops
+data:
+  config: |
+    apiVersion: v1
+    kind: Config
+    clusters:
+    - cluster:
+        certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        server: https://kubernetes.default.svc
+      name: in-cluster
+    contexts:
+    - context:
+        cluster: in-cluster
+        namespace: devops
+        user: jenkins-sa
+      name: in-cluster
+    current-context: in-cluster
+    users:
+    - name: jenkins-sa
+      user:
+        tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+---
 # Jenkins Deployment
 apiVersion: apps/v1
 kind: Deployment
@@ -374,8 +403,8 @@ spec:
 
       volumes:
         - name: kubeconfig
-          secret:
-            secretName: kubeconfig-secret
+          configMap:
+            name: jenkins-kubeconfig
         - name: jenkins-data
           persistentVolumeClaim:
             claimName: jenkins-data-pvc

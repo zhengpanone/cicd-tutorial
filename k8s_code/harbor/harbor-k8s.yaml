@@ -413,6 +413,37 @@ stringData:
   REGISTRY_CREDENTIAL_PASSWORD: k8sHarborRegPwd3
   CSRF_KEY: k8sHarborCsrfKey32CharsLong!!!!!
 ---
+# 14. ClusterIssuer + Certificate - harbor-token-cert（Token 签名密钥对）
+# cert-manager 自动生成 RSA 4096 密钥对，存入 Secret harbor-token-cert。
+# harbor-core 用 tls.key 签发 registry token，
+# harbor-registry / harbor-registryctl 用 tls.crt 验证 token。
+apiVersion: cert-manager.io/v1
+kind: ClusterIssuer
+metadata:
+  name: selfsigned-issuer
+spec:
+  selfSigned: {}
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata:
+  name: harbor-token-cert
+  namespace: devops
+spec:
+  secretName: harbor-token-cert
+  issuerRef:
+    name: selfsigned-issuer
+    kind: ClusterIssuer
+  commonName: harbor-token-signing
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  duration: 87600h    # 10 年
+  isCA: false
+  usages:
+    - digital signature
+    - key encipherment
+---
 # 18. Deployment - harbor-registry（镜像存储）
 apiVersion: apps/v1
 kind: Deployment
@@ -464,7 +495,7 @@ spec:
               subPath: config.yml
             - name: registry-token-cert
               mountPath: /etc/registry/root.crt
-              subPath: root.crt
+              subPath: tls.crt
           livenessProbe:
             httpGet:
               path: /
@@ -570,7 +601,7 @@ spec:
               subPath: config.yml
             - name: registry-token-cert
               mountPath: /etc/registry/root.crt
-              subPath: root.crt
+              subPath: tls.crt
           livenessProbe:
             tcpSocket:
               port: 8080
@@ -863,7 +894,7 @@ spec:
               subPath: app.conf
             - name: token-cert
               mountPath: /etc/core/private_key.pem
-              subPath: root.key
+              subPath: tls.key
           livenessProbe:
             httpGet:
               path: /api/v2.0/ping
