@@ -1,20 +1,13 @@
+---
 # =============================================================================
 # Harbor v2.15.1 on Kubernetes (Docker Desktop)
 # 企业级容器镜像仓库，包含 8 个组件：
 # harbor-nginx / harbor-portal / harbor-core / harbor-registry
-# harbor-registryctl / harbor-jobservice / harbor-database / harbor-redis
+# harbor-registryctl / harbor-jobservice
+# PostgreSQL and Redis are reused from the default namespace.
 # =============================================================================
-
-# 1. 命名空间
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: harbor
-  labels:
-    app: harbor
-
 ---
-# 2. PV - harbor-registry-pv（镜像存储）
+# 1. PV - harbor-registry-pv（镜像存储）
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -32,49 +25,8 @@ spec:
   hostPath:
     path: /run/desktop/mnt/host/e/dockerstore/harbor/registry
     type: DirectoryOrCreate
-
 ---
-# 3. PV - harbor-database-pv（PostgreSQL 数据）
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: harbor-database-pv
-  labels:
-    app: harbor
-    type: database
-spec:
-  capacity:
-    storage: 5Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /run/desktop/mnt/host/e/dockerstore/harbor/database
-    type: DirectoryOrCreate
-
----
-# 4. PV - harbor-redis-pv（Redis 数据）
-apiVersion: v1
-kind: PersistentVolume
-metadata:
-  name: harbor-redis-pv
-  labels:
-    app: harbor
-    type: redis
-spec:
-  capacity:
-    storage: 2Gi
-  accessModes:
-    - ReadWriteOnce
-  persistentVolumeReclaimPolicy: Retain
-  storageClassName: manual
-  hostPath:
-    path: /run/desktop/mnt/host/e/dockerstore/harbor/redis
-    type: DirectoryOrCreate
-
----
-# 5. PV - harbor-jobservice-pv（任务日志）
+# 2. PV - harbor-jobservice-pv（任务日志）
 apiVersion: v1
 kind: PersistentVolume
 metadata:
@@ -92,9 +44,8 @@ spec:
   hostPath:
     path: /run/desktop/mnt/host/e/dockerstore/harbor/jobservice
     type: DirectoryOrCreate
-
 ---
-# 6. PVC - harbor-registry-pvc
+# 3. PVC - harbor-registry-pvc
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -111,47 +62,8 @@ spec:
     matchLabels:
       app: harbor
       type: registry
-
 ---
-# 7. PVC - harbor-database-pvc
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: harbor-database-pvc
-  namespace: devops
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: manual
-  resources:
-    requests:
-      storage: 5Gi
-  selector:
-    matchLabels:
-      app: harbor
-      type: database
-
----
-# 8. PVC - harbor-redis-pvc
-apiVersion: v1
-kind: PersistentVolumeClaim
-metadata:
-  name: harbor-redis-pvc
-  namespace: devops
-spec:
-  accessModes:
-    - ReadWriteOnce
-  storageClassName: manual
-  resources:
-    requests:
-      storage: 2Gi
-  selector:
-    matchLabels:
-      app: harbor
-      type: redis
-
----
-# 9. PVC - harbor-jobservice-pvc
+# 4. PVC - harbor-jobservice-pvc
 apiVersion: v1
 kind: PersistentVolumeClaim
 metadata:
@@ -168,9 +80,8 @@ spec:
     matchLabels:
       app: harbor
       type: jobservice
-
 ---
-# 10. ConfigMap - harbor-core-config（Core 应用配置）
+# 5. ConfigMap - harbor-core-config（Core 应用配置）
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -187,14 +98,14 @@ data:
   env: |
     EXT_ENDPOINT=https://harbor.k8s:18443
     DATABASE_TYPE=postgresql
-    POSTGRESQL_HOST=harbor-database-headless.harbor.svc.cluster.local
+    POSTGRESQL_HOST=postgres-service.default.svc.cluster.local
     POSTGRESQL_PORT=5432
     POSTGRESQL_USERNAME=postgres
-    POSTGRESQL_DATABASE=registry
+    POSTGRESQL_DATABASE=postgres
     POSTGRESQL_SSLMODE=disable
     POSTGRESQL_MAX_IDLE_CONNS=100
     POSTGRESQL_MAX_OPEN_CONNS=900
-    REDIS_HOST=harbor-redis.harbor.svc.cluster.local
+    REDIS_HOST=redis-service-nodeport.default.svc.cluster.local
     REDIS_PORT=6379
     CORE_URL=http://harbor-core:8080
     JOBSERVICE_URL=http://harbor-jobservice:8080
@@ -208,9 +119,8 @@ data:
     AUTH_MODE=db_auth
     SELF_REGISTRATION=off
     REPOSITORY_READONLY=false
-
 ---
-# 11. ConfigMap - harbor-nginx-config（Nginx 反向代理配置）
+# 7. ConfigMap - harbor-nginx-config（Nginx 反向代理配置）
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -320,7 +230,6 @@ data:
             }
         }
     }
-
 ---
 # 12. ConfigMap - harbor-registry-config（Registry 存储配置）
 apiVersion: v1
@@ -348,8 +257,8 @@ data:
       redirect:
         disable: true
     redis:
-      addr: harbor-redis.harbor.svc.cluster.local:6379
-      password: harbor12345
+      addr: redis-service-nodeport.default.svc.cluster.local:6379
+      password: redis123456
       db: 1
       dialtimeout: 10ms
       readtimeout: 10ms
@@ -386,7 +295,6 @@ data:
     compatibility:
       schema1:
         enabled: false
-
 ---
 # 12b. ConfigMap - harbor-portal-config（Portal Nginx 配置，监听 8080）
 apiVersion: v1
@@ -443,7 +351,6 @@ data:
             }
         }
     }
-
 ---
 # 12c. ConfigMap - harbor-registryctl-config（Registryctl 配置）
 apiVersion: v1
@@ -458,7 +365,6 @@ data:
     port: 8080
     log_level: info
     registry_config: /etc/registry/config.yml
-
 ---
 # 12d. ConfigMap - harbor-jobservice-config（JobService 配置）
 apiVersion: v1
@@ -475,7 +381,7 @@ data:
       workers: 10
       backend: redis
       redis_pool:
-        redis_url: redis://:harbor12345@harbor-redis.harbor.svc.cluster.local:6379/2
+        redis_url: redis://:redis123456@redis-service-nodeport.default.svc.cluster.local:6379/2
         namespace: devops_jobservice
         idle_timeout_second: 3600
     job_loggers:
@@ -489,7 +395,6 @@ data:
     reaper:
       max_update_hours: 36
       max_dangling_hours: 168
-
 ---
 # 13. Secret - harbor-secret（敏感凭据）
 apiVersion: v1
@@ -500,190 +405,13 @@ metadata:
 type: Opaque
 stringData:
   HARBOR_ADMIN_PASSWORD: Harbor12345
-  POSTGRESQL_PASSWORD: harbor12345
-  REDIS_PASSWORD: harbor12345
+  POSTGRESQL_PASSWORD: postgres
+  REDIS_PASSWORD: redis123456
   CORE_SECRET: k8sHarborCoreSecret1
   JOBSERVICE_SECRET: k8sHarborJobSecret2
   REGISTRY_CREDENTIAL_USERNAME: harbor_registry_user
   REGISTRY_CREDENTIAL_PASSWORD: k8sHarborRegPwd3
   CSRF_KEY: k8sHarborCsrfKey32CharsLong!!!!!
-
----
-# 14. StatefulSet - harbor-database（PostgreSQL）
-apiVersion: apps/v1
-kind: StatefulSet
-metadata:
-  name: harbor-database
-  namespace: devops
-  labels:
-    app: harbor-database
-spec:
-  serviceName: harbor-database-headless
-  replicas: 1
-  selector:
-    matchLabels:
-      app: harbor-database
-  template:
-    metadata:
-      labels:
-        app: harbor-database
-    spec:
-      initContainers:
-        - name: fix-permissions
-          image: busybox:1.36
-          command: ["sh", "-c", "chown -R 999:999 /var/lib/postgresql/data"]
-          securityContext:
-            runAsUser: 0
-          volumeMounts:
-            - name: database-data
-              mountPath: /var/lib/postgresql/data
-      containers:
-        - name: harbor-database
-          image: goharbor/harbor-db:v2.15.1
-          imagePullPolicy: IfNotPresent
-          env:
-            - name: POSTGRES_PASSWORD
-              valueFrom:
-                secretKeyRef:
-                  name: harbor-secret
-                  key: POSTGRESQL_PASSWORD
-            - name: PGDATA
-              value: /var/lib/postgresql/data/pgdata
-          ports:
-            - containerPort: 5432
-              name: postgres
-          volumeMounts:
-            - name: database-data
-              mountPath: /var/lib/postgresql/data
-          livenessProbe:
-            exec:
-              command: ["pg_isready", "-U", "postgres"]
-            initialDelaySeconds: 60
-            periodSeconds: 10
-            failureThreshold: 6
-          readinessProbe:
-            exec:
-              command: ["pg_isready", "-U", "postgres"]
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 6
-          resources:
-            requests:
-              memory: "256Mi"
-              cpu: "250m"
-            limits:
-              memory: "512Mi"
-              cpu: "500m"
-      volumes:
-        - name: database-data
-          persistentVolumeClaim:
-            claimName: harbor-database-pvc
-
----
-# 15. Service - harbor-database-headless
-apiVersion: v1
-kind: Service
-metadata:
-  name: harbor-database-headless
-  namespace: devops
-  labels:
-    app: harbor-database
-spec:
-  clusterIP: None
-  ports:
-    - port: 5432
-      targetPort: 5432
-      name: postgres
-  selector:
-    app: harbor-database
-
----
-# 16. Deployment - harbor-redis
-apiVersion: apps/v1
-kind: Deployment
-metadata:
-  name: harbor-redis
-  namespace: devops
-  labels:
-    app: harbor-redis
-spec:
-  replicas: 1
-  strategy:
-    type: Recreate
-  selector:
-    matchLabels:
-      app: harbor-redis
-  template:
-    metadata:
-      labels:
-        app: harbor-redis
-    spec:
-      initContainers:
-        - name: fix-permissions
-          image: busybox:1.36
-          command: ["sh", "-c", "chown -R 999:999 /data"]
-          securityContext:
-            runAsUser: 0
-          volumeMounts:
-            - name: redis-data
-              mountPath: /data
-      containers:
-        - name: harbor-redis
-          image: goharbor/redis-photon:v2.15.1
-          imagePullPolicy: IfNotPresent
-          command:
-            - redis-server
-            - --requirepass
-            - harbor12345
-            - --appendonly
-            - "yes"
-          ports:
-            - containerPort: 6379
-              name: redis
-          volumeMounts:
-            - name: redis-data
-              mountPath: /data
-          livenessProbe:
-            exec:
-              command: ["redis-cli", "-a", "harbor12345", "ping"]
-            initialDelaySeconds: 30
-            periodSeconds: 10
-            failureThreshold: 3
-          readinessProbe:
-            exec:
-              command: ["redis-cli", "-a", "harbor12345", "ping"]
-            initialDelaySeconds: 15
-            periodSeconds: 10
-            failureThreshold: 3
-          resources:
-            requests:
-              memory: "64Mi"
-              cpu: "50m"
-            limits:
-              memory: "128Mi"
-              cpu: "100m"
-      volumes:
-        - name: redis-data
-          persistentVolumeClaim:
-            claimName: harbor-redis-pvc
-
----
-# 17. Service - harbor-redis
-apiVersion: v1
-kind: Service
-metadata:
-  name: harbor-redis
-  namespace: devops
-  labels:
-    app: harbor-redis
-spec:
-  ports:
-    - port: 6379
-      targetPort: 6379
-      name: redis
-  selector:
-    app: harbor-redis
-
 ---
 # 18. Deployment - harbor-registry（镜像存储）
 apiVersion: apps/v1
@@ -768,7 +496,6 @@ spec:
         - name: registry-token-cert
           secret:
             secretName: harbor-token-cert
-
 ---
 # 19. Service - harbor-registry
 apiVersion: v1
@@ -785,7 +512,6 @@ spec:
       name: registry
   selector:
     app: harbor-registry
-
 ---
 # 20. Deployment - harbor-registryctl（Registry 控制器）
 apiVersion: apps/v1
@@ -874,7 +600,6 @@ spec:
         - name: registry-token-cert
           secret:
             secretName: harbor-token-cert
-
 ---
 # 21. Service - harbor-registryctl
 apiVersion: v1
@@ -891,7 +616,6 @@ spec:
       name: http
   selector:
     app: harbor-registryctl
-
 ---
 # 22. Deployment - harbor-jobservice（异步任务引擎）
 apiVersion: apps/v1
@@ -954,7 +678,7 @@ spec:
             - name: LOG_LEVEL
               value: info
             - name: REDIS_URL
-              value: redis://:harbor12345@harbor-redis.harbor.svc.cluster.local:6379/0
+              value: redis://:redis123456@redis-service-nodeport.default.svc.cluster.local:6379/0
           volumeMounts:
             - name: jobservice-data
               mountPath: /var/log/jobs
@@ -987,7 +711,6 @@ spec:
         - name: jobservice-config
           configMap:
             name: harbor-jobservice-config
-
 ---
 # 23. Service - harbor-jobservice
 apiVersion: v1
@@ -1004,7 +727,6 @@ spec:
       name: http
   selector:
     app: harbor-jobservice
-
 ---
 # 24. Deployment - harbor-core（核心 API 服务）
 apiVersion: apps/v1
@@ -1027,10 +749,10 @@ spec:
       initContainers:
         - name: wait-for-database
           image: busybox:1.36
-          command: ["sh", "-c", "until nc -z harbor-database-headless.harbor.svc.cluster.local 5432; do echo waiting for database; sleep 3; done"]
+          command: ["sh", "-c", "until nc -z postgres-service.default.svc.cluster.local 5432; do echo waiting for database; sleep 3; done"]
         - name: wait-for-redis
           image: busybox:1.36
-          command: ["sh", "-c", "until nc -z harbor-redis.harbor.svc.cluster.local 6379; do echo waiting for redis; sleep 3; done"]
+          command: ["sh", "-c", "until nc -z redis-service-nodeport.default.svc.cluster.local 6379; do echo waiting for redis; sleep 3; done"]
       containers:
         - name: harbor-core
           image: goharbor/harbor-core:v2.15.1
@@ -1044,7 +766,7 @@ spec:
             - name: DATABASE_TYPE
               value: postgresql
             - name: POSTGRESQL_HOST
-              value: harbor-database-headless.harbor.svc.cluster.local
+              value: postgres-service.default.svc.cluster.local
             - name: POSTGRESQL_PORT
               value: "5432"
             - name: POSTGRESQL_USERNAME
@@ -1055,7 +777,7 @@ spec:
                   name: harbor-secret
                   key: POSTGRESQL_PASSWORD
             - name: POSTGRESQL_DATABASE
-              value: registry
+              value: postgres
             - name: POSTGRESQL_SSLMODE
               value: disable
             - name: POSTGRESQL_MAX_IDLE_CONNS
@@ -1063,7 +785,7 @@ spec:
             - name: POSTGRESQL_MAX_OPEN_CONNS
               value: "900"
             - name: REDIS_HOST
-              value: harbor-redis.harbor.svc.cluster.local
+              value: redis-service-nodeport.default.svc.cluster.local
             - name: REDIS_PORT
               value: "6379"
             - name: REDIS_PASSWORD
@@ -1128,13 +850,13 @@ spec:
             - name: TOKEN_PRIVATE_KEY_PATH
               value: /etc/core/private_key.pem
             - name: _REDIS_URL_CORE
-              value: redis://:harbor12345@harbor-redis.harbor.svc.cluster.local:6379/0
+              value: redis://:redis123456@redis-service-nodeport.default.svc.cluster.local:6379/0
             - name: CACHE_ENABLED
               value: "true"
             - name: CACHE_LAYER
               value: redis
             - name: CACHE_REDIS_URL
-              value: redis://:harbor12345@harbor-redis.harbor.svc.cluster.local:6379/0
+              value: redis://:redis123456@redis-service-nodeport.default.svc.cluster.local:6379/0
           volumeMounts:
             - name: core-config
               mountPath: /etc/core/app.conf
@@ -1170,7 +892,6 @@ spec:
         - name: token-cert
           secret:
             secretName: harbor-token-cert
-
 ---
 # 25. Service - harbor-core
 apiVersion: v1
@@ -1187,7 +908,6 @@ spec:
       name: http
   selector:
     app: harbor-core
-
 ---
 # 26. Deployment - harbor-portal（Web UI 前端）
 apiVersion: apps/v1
@@ -1251,7 +971,6 @@ spec:
           emptyDir: {}
         - name: portal-cache
           emptyDir: {}
-
 ---
 # 27. Service - harbor-portal
 apiVersion: v1
@@ -1268,7 +987,6 @@ spec:
       name: http
   selector:
     app: harbor-portal
-
 ---
 # 27b. Service - portal（短名别名，Harbor core 内部用此名称探测 Portal 健康状态）
 apiVersion: v1
@@ -1285,7 +1003,6 @@ spec:
       name: http
   selector:
     app: harbor-portal
-
 ---
 # 28. Deployment - harbor-nginx（反向代理入口）
 apiVersion: apps/v1
@@ -1339,7 +1056,6 @@ spec:
         - name: nginx-config
           configMap:
             name: harbor-nginx-config
-
 ---
 # 29. Service - harbor-nginx（ClusterIP）
 apiVersion: v1
@@ -1356,7 +1072,6 @@ spec:
       name: http
   selector:
     app: harbor-nginx
-
 ---
 # 30. Service - harbor-nodeport（NodePort 外部访问）
 apiVersion: v1
@@ -1375,7 +1090,6 @@ spec:
       name: http
   selector:
     app: harbor-nginx
-
 ---
 # Gateway API HTTPRoute: harbor
 # Shared listener ports: HTTP 18080, HTTPS 18443.

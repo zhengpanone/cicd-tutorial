@@ -1,11 +1,4 @@
-﻿# Namespace
-apiVersion: v1
-kind: Namespace
-metadata:
-  name: devops
-
----
-# PersistentVolume - Jenkins logs
+﻿# PersistentVolume - Jenkins logs
 apiVersion: v1
 kind: PersistentVolume
 metadata:
