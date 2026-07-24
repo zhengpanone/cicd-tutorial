@@ -29,7 +29,8 @@
 # ── default namespace ──────────────────────────────────────────────
 127.0.0.1 nacos.k8s
 127.0.0.1 consul.k8s
-127.0.0.1 rustfs.k8s
+127.0.0.1 console.rustfs.k8s
+127.0.0.1 s3.rustfs.k8s
 127.0.0.1 prometheus.k8s
 127.0.0.1 jaeger.k8s
 127.0.0.1 sentinel.k8s

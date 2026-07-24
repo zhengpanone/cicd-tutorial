@@ -80,7 +80,7 @@ apiVersion: gateway.networking.k8s.io/v1beta1
 kind: ReferenceGrant
 metadata:
   name: allow-main-gateway
-  namespace: harbor
+  namespace: devops
 spec:
   from:
     - group: gateway.networking.k8s.io

@@ -104,7 +104,7 @@ apiVersion: cert-manager.io/v1
 kind: Certificate
 metadata:
   name: harbor-tls
-  namespace: harbor
+  namespace: devops
 spec:
   secretName: harbor-tls
   duration: 2160h
