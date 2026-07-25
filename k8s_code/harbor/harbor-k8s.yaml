@@ -168,6 +168,9 @@ data:
             listen 8080;
             server_name _;
 
+            # 去掉 cookie 的 Secure 标志，HTTP/HTTPS 均可正常登录
+            proxy_cookie_flags ~ nosecure;
+
             # Harbor API 和业务逻辑
             location /api/ {
                 proxy_pass http://harbor-core:8080;
@@ -276,7 +279,7 @@ data:
     auth:
       token:
         issuer: harbor-token-issuer
-        realm: https://harbor.k8s:18443/service/token
+        realm: http://harbor-core.devops.svc.cluster.local:8080/service/token
         rootcertbundle: /etc/registry/root.crt
         service: harbor-registry
     validation:
@@ -687,6 +690,11 @@ spec:
           env:
             - name: CORE_URL
               value: http://harbor-core:8080
+            - name: CORE_SECRET
+              valueFrom:
+                secretKeyRef:
+                  name: harbor-secret
+                  key: CORE_SECRET
             - name: JOBSERVICE_SECRET
               valueFrom:
                 secretKeyRef:
@@ -808,7 +816,7 @@ spec:
                   name: harbor-secret
                   key: POSTGRESQL_PASSWORD
             - name: POSTGRESQL_DATABASE
-              value: postgres
+              value: harbor
             - name: POSTGRESQL_SSLMODE
               value: disable
             - name: POSTGRESQL_MAX_IDLE_CONNS

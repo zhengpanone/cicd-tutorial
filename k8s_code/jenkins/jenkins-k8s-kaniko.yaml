@@ -198,8 +198,8 @@ stringData:
   JENKINS_ADMIN_PASSWORD: jenkins123456
 
 ---
-# Optional Docker config for Kaniko registry push.
-# Replace the value with your real docker config JSON before using Kaniko to push images.
+# Docker config for Kaniko registry push (Harbor internal address).
+# Agent Pod 在同命名空间，通过 harbor-nginx:8080 推送镜像到 Harbor。
 apiVersion: v1
 kind: Secret
 metadata:
@@ -233,6 +233,35 @@ data:
     - context:
         cluster: in-cluster
         namespace: devops
+        user: jenkins-sa
+      name: in-cluster
+    current-context: in-cluster
+    users:
+    - name: jenkins-sa
+      user:
+        tokenFile: /var/run/secrets/kubernetes.io/serviceaccount/token
+
+---
+# kubeconfig Secret for Jenkins Agent Pods (Kubernetes Plugin Pod Template).
+# Agent Pod Template 中 volume 引用此 Secret，kubectl 容器通过它访问集群。
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kubeconfig-secret
+  namespace: devops
+type: Opaque
+stringData:
+  config: |
+    apiVersion: v1
+    kind: Config
+    clusters:
+    - cluster:
+        certificate-authority: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+        server: https://kubernetes.default.svc
+      name: in-cluster
+    contexts:
+    - context:
+        cluster: in-cluster
         user: jenkins-sa
       name: in-cluster
     current-context: in-cluster
