@@ -165,7 +165,7 @@ metadata:
   name: rocketmq-config
   namespace: default
   labels:
-    app: rabbitmq
+    app: rocketmq
     type: config
 data:
   broker-base.conf: |
@@ -177,18 +177,14 @@ data:
     storePathCommitLog=/opt/rocketmq/store/commitlog
     storePathConsumeQueue=/opt/rocketmq/store/consumequeue
     storePathIndex=/opt/rocketmq/store/index
-    brokerLogDir=/home/rocketmq/logs
     flushDiskType=ASYNC_FLUSH
     listenPort=10911
     autoCreateTopicEnable=true
-    # 注意：不再配置 brokerIP1/2，由 Proxy 处理网络
-    # 修复：DNS 与拆分后的 StatefulSet 名称对应
-    # Pod DNS 格式：<statefulset名>-0.<headless-svc>.<namespace>.svc.cluster.local
     namesrvAddr=rocketmq-nameserver-svc:9876
 
 ---
 # ===============================
-# 4. NameServer Headless Service（两个 StatefulSet 共用）
+# 4. NameServer Headless Service
 # ===============================
 apiVersion: v1
 kind: Service
@@ -218,8 +214,9 @@ spec:
       nodePort: 30976
 
 ---
-# NameServer-0（绑定 nameserver-pvc-0）
-# 宿主机路径：/run/desktop/mnt/host/e/dockerstore/rocketmq/nameserver-0/logs → 容器 /home/rocketmq/logs
+# ===============================
+# 5. NameServer-0
+# ===============================
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -260,8 +257,9 @@ spec:
             claimName: rocketmq-nameserver-pvc-0
 
 ---
-# NameServer-1（绑定 nameserver-pvc-1）
-# 宿主机路径：/run/desktop/mnt/host/e/dockerstore/rocketmq/nameserver-1/logs → 容器 /home/rocketmq/logs
+# ===============================
+# 6. NameServer-1
+# ===============================
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -329,10 +327,7 @@ spec:
 
 ---
 # ===============================
-# 6. Broker MASTER
-# 宿主机目录结构：
-#   store → /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-0/store（PVC）→ 容器 /opt/rocketmq/store
-#   logs  → /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-0/logs（hostPath）→ 容器 /home/rocketmq/logs
+# 8. Broker MASTER（核心修复）
 # ===============================
 apiVersion: apps/v1
 kind: StatefulSet
@@ -360,24 +355,7 @@ spec:
               cp /etc/rocketmq-base/broker-base.conf /etc/rocketmq/broker.conf
               echo "brokerId=0" >> /etc/rocketmq/broker.conf
               echo "brokerRole=ASYNC_MASTER" >> /etc/rocketmq/broker.conf
-              # 内网IP（K8s内部通信）
-              # echo "brokerIP1=${POD_IP}" >> /etc/rocketmq/broker.conf
-              # 外网IP（外部客户端访问）
-              # 用 NODE_IP 作为 brokerIP2
-              # echo "brokerIP2=${NODE_IP}" >> /etc/rocketmq/broker.conf
-
-              # 【修改】不再注入 brokerIP1 和 brokerIP2
-              # Broker 现在只在内网通信，由 Proxy 处理外网映射
               echo "listenPort=10911" >> /etc/rocketmq/broker.conf
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-            - name: NODE_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.hostIP
           volumeMounts:
             - name: config
               mountPath: /etc/rocketmq
@@ -388,10 +366,22 @@ spec:
           image: apache/rocketmq:5.3.0
           command: ["sh", "-c"]
           args:
-            - /home/rocketmq/rocketmq-5.3.0/bin/mqbroker -c /etc/rocketmq/broker.conf
+            - |
+              set -e
+              echo "Creating store subdirectories..."
+              mkdir -p /opt/rocketmq/store/config
+              mkdir -p /opt/rocketmq/store/commitlog
+              mkdir -p /opt/rocketmq/store/consumequeue
+              mkdir -p /opt/rocketmq/store/index
+              echo "Store directories ready:"
+              ls -la /opt/rocketmq/store/
+              echo "Starting broker..."
+              /home/rocketmq/rocketmq-5.3.0/bin/mqbroker -c /etc/rocketmq/broker.conf
           env:
-            - name: JAVA_OPT_EXT
+            - name: JAVA_OPT
               value: "-Xms512m -Xmx512m -Xmn256m"
+            - name: ROCKETMQ_LOG_DIR
+              value: /home/rocketmq/logs
           securityContext:
             runAsUser: 0
           ports:
@@ -405,13 +395,24 @@ spec:
               mountPath: /home/rocketmq/logs
             - name: config
               mountPath: /etc/rocketmq
+          livenessProbe:
+            tcpSocket:
+              port: 10911
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            tcpSocket:
+              port: 10911
+            initialDelaySeconds: 15
+            periodSeconds: 5
       volumes:
         - name: data
           persistentVolumeClaim:
             claimName: rocketmq-broker-pvc-0
         - name: logs
           hostPath:
-            path: /opt/dockerstore/rocketmq/broker-0/logs
+            path: /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-0/logs
             type: DirectoryOrCreate
         - name: config
           emptyDir: {}
@@ -421,10 +422,7 @@ spec:
 
 ---
 # ===============================
-# 7. Broker SLAVE
-# 宿主机目录结构：
-#   store → /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-1/store（PVC）→ 容器 /opt/rocketmq/store
-#   logs  → /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-1/logs（hostPath）→ 容器 /home/rocketmq/logs
+# 9. Broker SLAVE（replicas=0，暂不启动）
 # ===============================
 apiVersion: apps/v1
 kind: StatefulSet
@@ -432,7 +430,7 @@ metadata:
   name: rocketmq-broker-slave
 spec:
   serviceName: rocketmq-broker
-  replicas: 1
+  replicas: 0
   selector:
     matchLabels:
       app: rocketmq-broker
@@ -452,23 +450,7 @@ spec:
               cp /etc/rocketmq-base/broker-base.conf /etc/rocketmq/broker.conf
               echo "brokerId=1" >> /etc/rocketmq/broker.conf
               echo "brokerRole=SLAVE" >> /etc/rocketmq/broker.conf
-              # 内网IP（K8s内部通信）
-              # echo "brokerIP1=${POD_IP}" >> /etc/rocketmq/broker.conf
-               # 外网IP（外部客户端访问）
-              # 用 NODE_IP 作为 brokerIP2
-              # echo "brokerIP2=${NODE_IP}" >> /etc/rocketmq/broker.conf
-              # 【修改】不再注入 brokerIP1 和 brokerIP2
-              # Broker 现在只在内网通信，由 Proxy 处理外网映射
               echo "listenPort=10911" >> /etc/rocketmq/broker.conf
-          env:
-            - name: POD_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.podIP
-            - name: NODE_IP
-              valueFrom:
-                fieldRef:
-                  fieldPath: status.hostIP
           volumeMounts:
             - name: config
               mountPath: /etc/rocketmq
@@ -479,10 +461,18 @@ spec:
           image: apache/rocketmq:5.3.0
           command: ["sh", "-c"]
           args:
-            - /home/rocketmq/rocketmq-5.3.0/bin/mqbroker -c /etc/rocketmq/broker.conf
+            - |
+              set -e
+              mkdir -p /opt/rocketmq/store/config
+              mkdir -p /opt/rocketmq/store/commitlog
+              mkdir -p /opt/rocketmq/store/consumequeue
+              mkdir -p /opt/rocketmq/store/index
+              /home/rocketmq/rocketmq-5.3.0/bin/mqbroker -c /etc/rocketmq/broker.conf
           env:
-            - name: JAVA_OPT_EXT
+            - name: JAVA_OPT
               value: "-Xms512m -Xmx512m -Xmn256m"
+            - name: ROCKETMQ_LOG_DIR
+              value: /home/rocketmq/logs
           securityContext:
             runAsUser: 0
           ports:
@@ -502,7 +492,7 @@ spec:
             claimName: rocketmq-broker-pvc-1
         - name: logs
           hostPath:
-            path: /opt/dockerstore/rocketmq/broker-1/logs
+            path: /run/desktop/mnt/host/e/dockerstore/rocketmq/broker-1/logs
             type: DirectoryOrCreate
         - name: config
           emptyDir: {}
@@ -512,7 +502,7 @@ spec:
 
 ---
 # ===============================
-# 8. Dashboard
+# 10. Dashboard
 # ===============================
 apiVersion: apps/v1
 kind: Deployment
@@ -536,6 +526,8 @@ spec:
           env:
             - name: JAVA_OPTS
               value: "-Drocketmq.namesrv.addr=rocketmq-nameserver-svc:9876"
+            - name: JAVA_OPT
+              value: "-Drocketmq.namesrv.addr=rocketmq-nameserver-svc:9876"
 
 ---
 apiVersion: v1
@@ -552,6 +544,9 @@ spec:
       nodePort: 30882
 
 ---
+# ===============================
+# 11. Proxy（replicas=0，等 Broker 好再起）
+# ===============================
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -559,7 +554,7 @@ metadata:
   labels:
     app: rocketmq-proxy
 spec:
-  replicas: 1 # 生产环境建议 2-3 个副本
+  replicas: 0
   selector:
     matchLabels:
       app: rocketmq-proxy
@@ -569,13 +564,12 @@ spec:
         app: rocketmq-proxy
     spec:
       initContainers:
-        # 【新增】使用 InitContainer 准备配置文件
         - name: init-config
           image: busybox:1.35
           command: ["sh", "-c"]
           args:
             - |
-              # 【关键修改】使用标准 Key: nameSrvAddr，并简化写入方式
+              mkdir -p /etc/rocketmq-proxy/conf
               echo '{
                 "proxyMode": "CLUSTER",
                 "nameSrvAddr": "rocketmq-nameserver-svc:9876",
@@ -583,33 +577,27 @@ spec:
                 "grpcServerPort": 8081,
                 "remotingServerPort": 8080
               }' > /etc/rocketmq-proxy/conf/rocketmq-proxy.json
-
-          env:
-            - name: ROCKETMQ_NAMESERVER_ADDR
-              value: "rocketmq-nameserver-svc:9876"
           volumeMounts:
             - name: proxy-config
               mountPath: /etc/rocketmq-proxy/conf
       containers:
         - name: proxy
-          image: apache/rocketmq:5.3.0 # 确保版本 >= 5.0
+          image: apache/rocketmq:5.3.0
           command: ["sh", "-c"]
           args:
             - |
               sh /home/rocketmq/rocketmq-5.3.0/bin/mqproxy -pc /etc/rocketmq-proxy/conf/rocketmq-proxy.json
           env:
-            # 【关键】连接内网 NameServer 的地址
             - name: ROCKETMQ_NAMESERVER_ADDR
               value: "rocketmq-nameserver-svc:9876"
-            # 可选：设置 Proxy 的内存
             - name: JAVA_OPT
               value: "-Xms512m -Xmx512m"
             - name: ROCKETMQ_HOME
               value: "/home/rocketmq/rocketmq-5.3.0"
           ports:
-            - containerPort: 8081 # gRPC 端口
+            - containerPort: 8081
               name: grpc
-            - containerPort: 8080 # remoting 端口 (兼容旧版客户端)
+            - containerPort: 8080
               name: remoting
           volumeMounts:
             - name: proxy-config
@@ -622,6 +610,7 @@ spec:
       volumes:
         - name: proxy-config
           emptyDir: {}
+
 ---
 apiVersion: v1
 kind: Service
@@ -632,20 +621,19 @@ spec:
   selector:
     app: rocketmq-proxy
   ports:
-    # gRPC 端口映射
     - name: grpc
       port: 8081
       targetPort: 8081
-      nodePort: 30881 # 外部访问端口 (确保防火墙开放)
-    # Remoting 端口映射 (可选，用于兼容)
+      nodePort: 30881
     - name: remoting
       port: 8080
       targetPort: 8080
       nodePort: 30880
 
 ---
-# Gateway API HTTPRoute: rocketmq
-# Shared listener ports: HTTP 18080, HTTPS 18443.
+# ===============================
+# 12. Gateway API HTTPRoute: rocketmq
+# ===============================
 apiVersion: gateway.networking.k8s.io/v1
 kind: HTTPRoute
 metadata:

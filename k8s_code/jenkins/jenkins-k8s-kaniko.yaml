@@ -180,9 +180,6 @@ data:
     strategy.setAllowAnonymousRead(false)
     instance.setAuthorizationStrategy(strategy)
 
-    // Disable self-registration
-    instance.getSecurityRealm().setAllowsSignup(false)
-
     instance.save()
 
 ---
